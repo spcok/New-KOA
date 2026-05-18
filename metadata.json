@@ -1,0 +1,8 @@
+{
+  "name": "Remix: ClinicalDataSync",
+  "description": "Offline-first clinical data management application using TanStack DB and Electric SQL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
