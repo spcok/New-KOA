@@ -3,9 +3,13 @@ import { useOutboxStore } from '../store/outboxStore';
 import { FeedingSchedule } from '../types/schema';
 
 export const feedingService = {
-  bulkCreateSchedules: async (schedules: Omit<FeedingSchedule, 'id' | 'created_at' | 'updated_at'>[]) => {
+  // Bulk create schedules - uses feeding_schedules table 
+  async bulkCreateSchedules(schedules: Omit<FeedingSchedule, 'id' | 'created_at' | 'updated_at'>[]) {
     try {
-      const { error } = await supabase.from('feeding_schedules').insert(schedules);
+      const { error } = await supabase
+        .from('feeding_schedules')
+        .insert(schedules);
+      
       if (error) throw error;
     } catch (error) {
       console.warn("Network blip detected. Queueing feeding schedules to outbox.", error);
@@ -18,10 +22,14 @@ export const feedingService = {
     }
   },
 
-  deleteSchedule: async (id: string) => {
+  // Delete/Soft-delete schedule 
+  async deleteSchedule(id: string) {
     try {
-      // Soft delete as per schema definition
-      const { error } = await supabase.from('feeding_schedules').update({ is_deleted: true }).eq('id', id);
+      const { error } = await supabase
+        .from('feeding_schedules')
+        .update({ is_deleted: true })
+        .eq('id', id);
+      
       if (error) throw error;
     } catch (error) {
       useOutboxStore.getState().addMutation({

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Calendar, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
 import AddEntryModal from './AddEntryModal';
 
 export default function DailyLog() {

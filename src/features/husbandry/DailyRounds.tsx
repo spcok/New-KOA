@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { dailyRoundService } from '../../services/dailyRoundService';
 import { Animal, DailyRound } from '../../types/schema';
+import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
 
 type ReportType = 'HEALTH' | 'WATER' | 'SECURE';
