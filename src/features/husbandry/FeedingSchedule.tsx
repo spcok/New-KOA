@@ -1,180 +1,274 @@
 import React, { useState } from 'react';
-import { useForm } from '@tanstack/react-form'; // Unified Form Logic
-import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { feedingService } from '../../services/feedingService';
-import { zodValidator } from '@tanstack/zod-form-adapter'; // Strict validation
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from '@tanstack/react-form';
+import { zodValidator } from '@tanstack/zod-form-adapter';
 import { z } from 'zod';
-import { ClipboardCheck, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Animal } from '../../types/schema';
+import { Animal, FeedingSchedule as FeedingScheduleType, OperationalList } from '../../types/schema';
+import { feedingService } from '../../services/feedingService';
+import { CalendarClock, Plus, Trash2, Loader2, Utensils, RefreshCw, Calendar as CalIcon } from 'lucide-react';
 
-// Unified Schema consistent with your DB
-const feedingSchema = z.object({
-  animal_id: z.string().uuid(),
-  food_type: z.string().min(1),
-  quantity: z.number().min(0.1),
-  calci_dust: z.boolean().default(false),
-});
+const getLocalDateString = () => new Date().toISOString().split('T')[0];
 
-const FeedingSchedule = () => {
+export default function FeedingSchedule() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<string>('EXOTICS');
+  const categories = ['OWLS', 'RAPTORS', 'MAMMALS', 'EXOTICS'];
 
-  const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({ 
+  // 1. Data Fetching
+  const { data: animals = [], isLoading: loadingAnimals } = useQuery({ 
     queryKey: ['animals'], 
-    queryFn: async () => {
-        const { data } = await supabase.from('animals').select('*').eq('is_deleted', false);
-        return (data || []) as Animal[];
-    }
+    queryFn: async () => (await supabase.from('animals').select('*').eq('is_deleted', false)).data as Animal[] 
   });
 
+  const { data: schedules = [], isLoading: loadingSchedules } = useQuery({ 
+    queryKey: ['feeding_schedules'], 
+    queryFn: async () => (await supabase.from('feeding_schedules').select('*').eq('is_deleted', false).eq('is_completed', false)).data as FeedingScheduleType[] 
+  });
+
+  const { data: foodOptions = [] } = useQuery({ 
+    queryKey: ['operational_lists', 'FOOD_TYPE'], 
+    queryFn: async () => (await supabase.from('operational_lists').select('*').eq('category', 'FOOD_TYPE').eq('is_deleted', false)).data as OperationalList[] 
+  });
+
+  const filteredAnimals = animals.filter(a => (a.category || '').toUpperCase() === activeTab);
+  
+  // Sort upcoming schedules nearest first
+  const upcomingSchedules = [...schedules].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+
+  // 2. TanStack Form Definition
   const form = useForm({
+    validatorAdapter: zodValidator,
     defaultValues: {
       animal_id: '',
       food_type: '',
       quantity: 1,
       calci_dust: false,
+      schedule_mode: 'single' as 'single' | 'interval',
+      target_date: getLocalDateString(),
+      interval_days: 3,
+      occurrences: 5
     },
     onSubmit: async ({ value }) => {
-      await feedingService.bulkAddTasks([{
-        animal_id: value.animal_id,
-        title: 'Scheduled Feed',
-        task_type: 'FEED',
-        description: `${value.quantity} ${value.food_type}${value.calci_dust ? ' (+ Calci Dust)' : ''}`,
-        due_date: new Date().toISOString().split('T')[0]
-      }]);
-      queryClient.invalidateQueries({ queryKey: ['tasks', 'FEED'] });
-      form.reset();
-    },
+        let datesToSchedule: string[] = [];
+
+        if (value.schedule_mode === 'single') {
+            datesToSchedule.push(value.target_date);
+        } else {
+            const [y, m, d] = value.target_date.split('-').map(Number);
+            const startDate = new Date(y, m - 1, d);
+
+            for (let i = 0; i < value.occurrences; i++) {
+                const current = new Date(startDate);
+                current.setDate(startDate.getDate() + (i * value.interval_days));
+                datesToSchedule.push(current.toISOString().split('T')[0]);
+            }
+        }
+
+        const newSchedules = datesToSchedule.map(date => ({
+            animal_id: value.animal_id,
+            scheduled_date: date,
+            food_type: value.food_type,
+            quantity: value.quantity,
+            calci_dust: value.calci_dust,
+            is_completed: false,
+            is_deleted: false,
+            interval_days: value.schedule_mode === 'interval' ? value.interval_days : null
+        }));
+
+        await feedingService.bulkCreateSchedules(newSchedules as Omit<FeedingScheduleType, 'id'>[]);
+        // Tell React Query to refresh the table
+        queryClient.invalidateQueries({ queryKey: ['feeding_schedules'] });
+        form.reset();
+    }
   });
 
+  if (loadingAnimals || loadingSchedules) return <div className="flex justify-center items-center min-h-screen bg-[#0F1117]"><Loader2 className="animate-spin text-emerald-500 w-12 h-12" /></div>;
+
+  const inputClass = "w-full px-4 py-2.5 bg-[#0F1117] border border-slate-800/80 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50 transition-all shadow-inner";
+
   return (
-    <div className="bg-[#0F1117] min-h-screen p-8 text-white relative">
-      <div className="max-w-2xl mx-auto space-y-6 relative z-10">
+    <div className="bg-[#0F1117] min-h-screen text-slate-300 font-sans p-4 lg:p-8 pb-32">
+      <div className="max-w-[1600px] mx-auto space-y-6">
         
-        <div className="flex items-center gap-3 mb-8 border-b border-slate-800 pb-4">
-            <div className="bg-emerald-500/20 p-2 rounded-xl text-emerald-400">
-                <ClipboardCheck size={28} />
-            </div>
-            <div>
-                <h1 className="text-3xl font-black tracking-tight text-white">Feeding Schedule</h1>
-                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mt-1">Plan and track daily diets</p>
-            </div>
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+              <CalendarClock className="text-emerald-500" size={28} /> Feeding Schedule
+            </h1>
+            <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-widest">Plan & Forecast Animal Diets</p>
+          </div>
         </div>
 
-      {/* TanStack Form Wrapper */}
-      <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); form.handleSubmit(); }} className="space-y-6 bg-[#0A0B0E] p-6 border border-slate-800/80 rounded-2xl shadow-2xl">
-        <form.Field
-          name="animal_id"
-          validators={{
-            onChange: feedingSchema.shape.animal_id,
-          }}
-          children={(field) => (
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Animal</label>
-              <select 
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                className="bg-[#0F1117] border border-slate-800 p-3 rounded-xl text-white w-full focus:border-emerald-500/50 outline-none transition-colors"
-              >
-                <option value="">Select Animal...</option>
-                {animals.map((animal) => (
-                  <option key={animal.id!} value={animal.id!}>{animal.name || 'Unnamed'} ({animal.species})</option>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          
+          {/* LEFT: The Form Builder */}
+          <div className="xl:col-span-1 bg-[#0A0B0E] p-6 rounded-2xl border border-slate-800/80 shadow-2xl h-fit">
+             <h4 className="text-xs font-black text-white uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-slate-800/80 pb-4">
+                <Plus size={16} className="text-emerald-500"/> Generate Schedules
+             </h4>
+
+             <div className="flex overflow-x-auto scrollbar-hide bg-[#0F1117] p-1.5 rounded-xl gap-1 mb-5 border border-slate-800/80 shadow-inner">
+                {categories.map(cat => (
+                    <button 
+                        key={cat} onClick={() => { setActiveTab(cat); form.setFieldValue('animal_id', ''); }}
+                        className={`flex-1 min-w-[70px] py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === cat ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-500 hover:text-white hover:bg-slate-800/50'}`}
+                    >
+                        {cat}
+                    </button>
                 ))}
-              </select>
-              {field.state.meta.errors ? (
-                <em role="alert" className="text-red-400 text-xs">{field.state.meta.errors.join(', ')}</em>
-              ) : null}
-            </div>
-          )}
-        />
-        
-        <form.Field
-          name="food_type"
-          validators={{
-            onChange: feedingSchema.shape.food_type,
-          }}
-          children={(field) => (
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Food Type / Diet</label>
-              <input 
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="e.g. Mice, Crickets, Salad..."
-                className="bg-[#0F1117] border border-slate-800 p-3 rounded-xl text-white w-full focus:border-emerald-500/50 outline-none transition-colors"
-                autoComplete="off"
-              />
-               {field.state.meta.errors ? (
-                <em role="alert" className="text-red-400 text-xs">{field.state.meta.errors.join(', ')}</em>
-              ) : null}
-            </div>
-          )}
-        />
+             </div>
 
-        <div className="grid grid-cols-2 gap-4">
-             <form.Field
-              name="quantity"
-              validators={{
-                onChange: feedingSchema.shape.quantity,
-              }}
-              children={(field) => (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Quantity</label>
-                  <input 
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={field.state.value}
-                    onChange={(e) => field.handleChange(parseFloat(e.target.value))}
-                    className="bg-[#0F1117] border border-slate-800 p-3 rounded-xl text-white w-full focus:border-emerald-500/50 outline-none transition-colors"
-                  />
-                   {field.state.meta.errors ? (
-                    <em role="alert" className="text-red-400 text-xs">{field.state.meta.errors.join(', ')}</em>
-                  ) : null}
-                </div>
-              )}
-            />
+             <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); form.handleSubmit(); }} className="space-y-4">
+                <form.Field name="animal_id" children={(field) => (
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Animal *</label>
+                        <select value={field.state.value} onChange={e => field.handleChange(e.target.value)} className={inputClass} required>
+                            <option value="">Select Animal...</option>
+                            {filteredAnimals.map(a => <option key={a.id} value={a.id!}>{a.name} ({a.species})</option>)}
+                        </select>
+                    </div>
+                )}/>
 
-            <form.Field
-              name="calci_dust"
-              children={(field) => (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-widest text-slate-400">Supplements</label>
-                  <label className="flex items-center gap-3 bg-[#0F1117] border border-slate-800 p-3 shrink-0 rounded-xl cursor-pointer hover:bg-slate-800/30 transition-colors">
-                     <input 
-                        type="checkbox"
-                        checked={field.state.value}
-                        onChange={(e) => field.handleChange(e.target.checked)}
-                        className="w-5 h-5 accent-emerald-500 bg-slate-900 border-slate-800 rounded"
-                     />
-                     <span className="text-sm font-medium text-slate-300">Calci Dust</span>
-                  </label>
+                <div className="grid grid-cols-2 gap-4">
+                    <form.Field name="food_type" children={(field) => (
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Food Type *</label>
+                            {foodOptions.length > 0 ? (
+                                <select value={field.state.value} onChange={e => field.handleChange(e.target.value)} className={inputClass} required>
+                                    <option value="">Select...</option>
+                                    {foodOptions.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                                </select>
+                            ) : (
+                                <input value={field.state.value} onChange={e => field.handleChange(e.target.value)} className={inputClass} placeholder="E.g. Mice" required />
+                            )}
+                        </div>
+                    )}/>
+                    <form.Field name="quantity" children={(field) => (
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Quantity *</label>
+                            <input type="number" step="0.1" value={field.state.value} onChange={e => field.handleChange(parseFloat(e.target.value))} className={inputClass} required />
+                        </div>
+                    )}/>
                 </div>
-              )}
-            />
+
+                <form.Field name="calci_dust" children={(field) => (
+                    <div className="flex items-center gap-3 bg-[#0F1117] p-3 rounded-xl border border-slate-800/80 shadow-inner">
+                        <input type="checkbox" checked={field.state.value} onChange={e => field.handleChange(e.target.checked)} className="w-4 h-4 text-emerald-500 bg-[#0A0B0E] rounded border-slate-700 focus:ring-emerald-500/50" />
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Include Calci-Dust</span>
+                    </div>
+                )}/>
+
+                <div className="pt-4 border-t border-slate-800/80">
+                    <form.Field name="schedule_mode" children={(field) => (
+                        <div className="flex bg-[#0F1117] p-1.5 rounded-xl border border-slate-800/80 mb-4">
+                            <button type="button" onClick={() => field.handleChange('single')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${field.state.value === 'single' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}>Single Feed</button>
+                            <button type="button" onClick={() => field.handleChange('interval')} className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-1.5 ${field.state.value === 'interval' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><RefreshCw size={12}/> Auto-Interval</button>
+                        </div>
+                    )}/>
+
+                    <form.Subscribe selector={(state) => state.values.schedule_mode} children={(mode) => (
+                        <div className="space-y-4 bg-[#0F1117] p-4 rounded-xl border border-slate-800/80 shadow-inner">
+                            <form.Field name="target_date" children={(field) => (
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{mode === 'interval' ? 'Start Date' : 'Target Date'} *</label>
+                                    <input type="date" value={field.state.value} onChange={e => field.handleChange(e.target.value)} className={inputClass} required/>
+                                </div>
+                            )}/>
+                            
+                            {mode === 'interval' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <form.Field name="interval_days" children={(field) => (
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Repeat Every (Days)</label>
+                                            <input type="number" min="1" value={field.state.value} onChange={e => field.handleChange(parseInt(e.target.value))} className={inputClass} required/>
+                                        </div>
+                                    )}/>
+                                    <form.Field name="occurrences" children={(field) => (
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Occurrences</label>
+                                            <input type="number" min="1" max="50" value={field.state.value} onChange={e => field.handleChange(parseInt(e.target.value))} className={inputClass} required/>
+                                        </div>
+                                    )}/>
+                                </div>
+                            )}
+                        </div>
+                    )}/>
+                </div>
+
+                <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]} children={([canSubmit, isSubmitting]) => (
+                    <button type="submit" disabled={!canSubmit || isSubmitting as boolean} className="w-full mt-4 bg-emerald-600 text-white py-3.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center justify-center gap-2">
+                        {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <CalendarClock size={16} />}
+                        {isSubmitting ? 'SCHEDULING...' : 'CONFIRM SCHEDULE'}
+                    </button>
+                )}/>
+             </form>
+          </div>
+
+          {/* RIGHT: The Data Table */}
+          <div className="xl:col-span-2 bg-[#0A0B0E] p-6 rounded-2xl border border-slate-800/80 shadow-2xl h-fit flex flex-col">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800/80 pb-5 mb-5">
+                 <div>
+                    <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2">
+                        <Utensils size={16} className="text-emerald-500"/> Scheduled Feeds
+                    </h4>
+                    <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-widest">{upcomingSchedules.length} Pending Feeds</p>
+                 </div>
+             </div>
+
+             <div className="flex-1 overflow-x-auto">
+                <table className="w-full text-left min-w-[600px]">
+                    <thead className="bg-[#0F1117] border-b border-slate-800/80">
+                        <tr>
+                            <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-1/4">Date</th>
+                            <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-1/3">Animal</th>
+                            <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-1/3">Diet specifics</th>
+                            <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80">
+                        {upcomingSchedules.length === 0 ? (
+                             <tr><td colSpan={4} className="px-4 py-12 text-center text-xs font-black text-slate-500 uppercase tracking-widest">No upcoming schedules found.</td></tr>
+                        ) : (
+                            upcomingSchedules.map(schedule => {
+                                const animal = animals.find(a => a.id === schedule.animal_id);
+                                const dateObj = new Date(schedule.scheduled_date);
+                                const isToday = schedule.scheduled_date === getLocalDateString();
+
+                                return (
+                                    <tr key={schedule.id} className="hover:bg-[#0F1117]/50 transition-colors group">
+                                        <td className="px-4 py-3">
+                                            <div className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-md border text-[10px] font-black uppercase tracking-widest ${isToday ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-[#0A0B0E] border-slate-800 text-slate-400'}`}>
+                                                <CalIcon size={12}/> {dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <p className="text-xs font-bold text-white uppercase tracking-tight">{animal?.name || 'Unknown'}</p>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest">{schedule.quantity}x {schedule.food_type}</p>
+                                            {schedule.calci_dust && <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5 block">+ Calci-Dust</span>}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button onClick={async () => {
+                                                await feedingService.deleteSchedule(schedule.id!);
+                                                queryClient.invalidateQueries({ queryKey: ['feeding_schedules'] });
+                                            }} className="p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        )}
+                    </tbody>
+                </table>
+             </div>
+          </div>
+
         </div>
-        
-        <div className="pt-4 flex justify-end">
-          <form.Subscribe
-            selector={(state) => [state.canSubmit, state.isSubmitting]}
-            children={([canSubmit, isSubmitting]) => (
-                <button 
-                type="submit" 
-                disabled={!canSubmit}
-                className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 transition-colors text-white px-8 py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center gap-2"
-                >
-                {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <ClipboardCheck size={16} />}
-                Schedule Feed
-                </button>
-            )}
-          />
-        </div>
-      </form>
       </div>
-    {/* Abstract Background Elements */}
-    <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
-    <div className="fixed bottom-0 left-0 w-[600px] h-[600px] bg-emerald-700/5 blur-[150px] rounded-full pointer-events-none" />
     </div>
   );
-};
-
-export default FeedingSchedule;
+}

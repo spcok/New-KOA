@@ -1,38 +1,35 @@
 import { supabase } from '../lib/supabase';
 import { useOutboxStore } from '../store/outboxStore';
-import { Task } from '../types/schema';
-import { queryClient } from '../lib/db';
+import { FeedingSchedule } from '../types/schema';
 
 export const feedingService = {
-  bulkAddTasks: async (tasks: Partial<Task>[]) => {
+  bulkCreateSchedules: async (schedules: Omit<FeedingSchedule, 'id' | 'created_at' | 'updated_at'>[]) => {
     try {
-      const { error } = await supabase.from('tasks').insert(tasks);
+      const { error } = await supabase.from('feeding_schedules').insert(schedules);
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['tasks', 'FEED'] });
     } catch (error) {
+      console.warn("Network blip detected. Queueing feeding schedules to outbox.", error);
       useOutboxStore.getState().addMutation({
         id: crypto.randomUUID(),
-        table: 'tasks',
+        table: 'feeding_schedules',
         action: 'insert',
-        payload: tasks
+        payload: schedules
       });
-      // Optimistic update for UI feel even if offline
-      queryClient.invalidateQueries({ queryKey: ['tasks', 'FEED'] });
     }
   },
 
-  deleteTask: async (taskId: string) => {
+  deleteSchedule: async (id: string) => {
     try {
-      await supabase.from('tasks').delete().eq('id', taskId);
-      queryClient.invalidateQueries({ queryKey: ['tasks', 'FEED'] });
+      // Soft delete as per schema definition
+      const { error } = await supabase.from('feeding_schedules').update({ is_deleted: true }).eq('id', id);
+      if (error) throw error;
     } catch (error) {
       useOutboxStore.getState().addMutation({
         id: crypto.randomUUID(),
-        table: 'tasks',
-        action: 'delete',
-        payload: { id: taskId }
+        table: 'feeding_schedules',
+        action: 'update',
+        payload: { id, is_deleted: true }
       });
-      queryClient.invalidateQueries({ queryKey: ['tasks', 'FEED'] });
     }
   }
 };
