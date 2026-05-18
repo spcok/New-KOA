@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 interface Mutation {
   id: string;
   table: string;
-  action: 'upsert';
+  action: 'insert' | 'update' | 'upsert' | 'delete';
   payload: any;
 }
 

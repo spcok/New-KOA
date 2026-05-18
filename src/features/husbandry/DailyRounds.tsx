@@ -91,7 +91,7 @@ export default function DailyRounds() {
         date: viewDate,
         shift: roundType,
         completed_at: new Date().toISOString(),
-        ...data
+        ...((data || {}) as Record<string, any>)
     }));
     await dailyRoundService.bulkSaveRound(roundsToSave as DailyRound[]);
     setPendingChecks({});

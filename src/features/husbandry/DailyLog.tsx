@@ -13,13 +13,13 @@ export default function DailyLog() {
   // 1. Sync Engine Local Cache Reads (PATCHED with queryFn)
   const { data: rawAnimals = [], isLoading: loadingAnimals } = useQuery({ 
     queryKey: ['animals'], 
-    queryFn: () => [], 
+    queryFn: () => [] as any[], 
     staleTime: Infinity 
   });
   
   const { data: rawLogs = [], isLoading: loadingLogs } = useQuery({ 
     queryKey: ['daily_logs'], 
-    queryFn: () => [], 
+    queryFn: () => [] as any[], 
     staleTime: Infinity 
   });
 

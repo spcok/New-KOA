@@ -11,7 +11,7 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
 
   const { data: rawAnimals = [] } = useQuery({ 
     queryKey: ['animals'],
-    queryFn: () => [],
+    queryFn: () => [] as any[],
     staleTime: Infinity
   });
   

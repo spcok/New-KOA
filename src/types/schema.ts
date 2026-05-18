@@ -297,6 +297,7 @@ export const MaintenanceTicketSchema = z.object({
 
 export const TaskSchema = z.object({
   id: z.string().uuid().optional(),
+  animal_id: z.string().uuid().nullable().optional(),
   title: z.string(),
   description: z.string().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),

@@ -103,7 +103,7 @@ export function Dashboard() {
       <td className="px-6 py-4 text-xs font-bold">
         <Link 
           to="/animals/$id" 
-          params={{ id: animal.id }}
+          params={{ id: animal.id } as any}
           className="text-emerald-400 hover:text-emerald-300 transition-colors underline decoration-emerald-500/30 underline-offset-4"
         >
           {animal.name || 'Unnamed'}
