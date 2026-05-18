@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useTransition } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Animal, AnimalCategory, Task, LogType } from '../../types/schema'; 
 import { CalendarClock, Plus, Calendar, Trash2, Filter, Utensils, RefreshCw, Loader2, History, ArrowRight, Copy } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { Animal, type FeedingSchedule as FeedingScheduleType } from '../../types/schema';
-import { feedingService } from '../../services/feedingService';
+import { useFeedingScheduleData } from './useFeedingScheduleData';
+import { useAnimalsData } from '../animals/useAnimalsData';
+import { useTaskData } from './useTaskData';
 
 // Helper to replace legacy temporalService
 const getUKLocalDate = () => new Date().toISOString().split('T')[0];
