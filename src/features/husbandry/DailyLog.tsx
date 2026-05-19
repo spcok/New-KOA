@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Calendar, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
 import AddEntryModal from './AddEntryModal';
 
 export default function DailyLog() {
@@ -89,8 +88,12 @@ export default function DailyLog() {
         if (log.temperature_c) displayValue = `${log.temperature_c}°C`;
         else if (log.basking_temp_c) displayValue = `${log.basking_temp_c}°C / ${log.cool_temp_c}°C`;
         else displayValue = 'Recorded';
+
+        if (log.notes) {
+          displayValue = displayValue === 'Recorded' ? log.notes : `${displayValue} (${log.notes})`;
+        }
       } else {
-        displayValue = 'Recorded';
+        displayValue = log.notes || 'Recorded';
       }
     }
 
@@ -98,14 +101,15 @@ export default function DailyLog() {
       <td className="px-4 py-3 text-center">
         <button 
           onClick={() => setModalState({ isOpen: true, animal, type })}
-          className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border ${
+          className={`w-full py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border max-w-full truncate ${
             hasData 
-              ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-inner' 
+              ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-inner font-bold' 
               : 'bg-[#0A0B0E] text-slate-600 border-slate-800/80 hover:bg-slate-800/50 hover:text-emerald-400 hover:border-emerald-500/50'
           }`}
+          title={hasData ? displayValue : undefined}
         >
-          {hasData ? <Check size={14} /> : <Plus size={14} className="opacity-50" />}
-          {displayValue}
+          {hasData ? <Check size={13} className="shrink-0 text-emerald-400" /> : <Plus size={13} className="opacity-50 shrink-0" />}
+          <span className="truncate">{displayValue}</span>
         </button>
       </td>
     );
