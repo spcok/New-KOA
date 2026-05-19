@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Heart, AlertCircle, Scale, ClipboardCheck, CheckCircle, Plus, Calendar, ArrowDownAZ, ChevronLeft, ChevronRight } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { AnimalFormModal } from '../animals/AnimalFormModal';
 
 export function Dashboard() {
@@ -10,19 +11,39 @@ export function Dashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [sortMode, setSortMode] = useState<'NAME_ASC' | 'NAME_DESC' | 'CUSTOM'>('NAME_ASC');
 
+  // 1. Live Query Hooks fetching directly from the tables
   const { data: rawAnimals = [] } = useQuery({ 
     queryKey: ['animals'],
-    queryFn: () => [], 
-    staleTime: Infinity 
+    queryFn: async () => {
+      const { data } = await supabase.from('animals').select('*').eq('is_deleted', false);
+      return data || [];
+    }
   });
   
   const { data: rawTasks = [] } = useQuery({ 
     queryKey: ['tasks'],
-    queryFn: () => [],
-    staleTime: Infinity
+    queryFn: async () => {
+      const { data } = await supabase.from('tasks').select('*').eq('is_deleted', false);
+      return data || [];
+    }
   });
 
-  // Date Manipulation Helpers
+  const { data: rawLogs = [] } = useQuery({
+    queryKey: ['daily_logs'],
+    queryFn: async () => {
+      const { data } = await supabase.from('daily_logs').select('*').eq('is_deleted', false);
+      return data || [];
+    }
+  });
+
+  const { data: rawSchedules = [] } = useQuery({
+    queryKey: ['feeding_schedules'],
+    queryFn: async () => {
+      const { data } = await supabase.from('feeding_schedules').select('*').eq('is_deleted', false).eq('is_completed', false);
+      return data || [];
+    }
+  });
+
   const adjustDate = (days: number) => {
     const date = new Date(selectedDate);
     date.setDate(date.getDate() + days);
@@ -33,10 +54,33 @@ export function Dashboard() {
     setSelectedDate(new Date().toISOString().split('T')[0]);
   };
 
-  // 1. Filter out deleted
+  // Helper formatting function matching the DailyLogs precision layout rules
+  const formatWeight = (g: number, unitStr: string) => {
+    const u = (unitStr || 'g').toLowerCase();
+    if (u === 'lbs' || u === 'lb') {
+      const totalOz = g / 28.349523125;
+      let eighths = Math.round((totalOz - Math.floor(totalOz)) * 8);
+      let oz = Math.floor(totalOz);
+      if (eighths === 8) { eighths = 0; oz++; }
+      let lbs = Math.floor(oz / 16);
+      oz = oz % 16;
+      const eStr = eighths > 0 ? ` ${eighths}/8` : '';
+      return `${lbs}lb ${oz}oz${eStr}`;
+    } else if (u === 'oz') {
+      const totalOz = g / 28.349523125;
+      let eighths = Math.round((totalOz - Math.floor(totalOz)) * 8);
+      let oz = Math.floor(totalOz);
+      if (eighths === 8) { eighths = 0; oz++; }
+      const eStr = eighths > 0 ? ` ${eighths}/8` : '';
+      return `${oz}oz${eStr}`;
+    } else if (u === 'kg') {
+      return `${(g / 1000).toFixed(2)}kg`;
+    }
+    return `${g}g`;
+  };
+
   const activeAnimals = rawAnimals.filter((a: any) => !a.is_deleted);
   
-  // 2. Apply Sorting Engine
   const sortedAnimals = [...activeAnimals].sort((a: any, b: any) => {
     if (sortMode === 'NAME_ASC') return (a.name || '').localeCompare(b.name || '');
     if (sortMode === 'NAME_DESC') return (b.name || '').localeCompare(a.name || '');
@@ -46,10 +90,28 @@ export function Dashboard() {
 
   const tasks = rawTasks.filter((t: any) => t.status === 'PENDING' && !t.is_deleted);
 
-  // 3. Apply Category Filter
+  // 2. Real-time Aggregation and Dynamic Stat Population Engine
+  const enhancedAnimals = sortedAnimals.map((animal: any) => {
+    const animalLogs = rawLogs.filter((l: any) => l.animal_id === animal.id);
+    
+    const weightLog = animalLogs.find((l: any) => l.log_type === 'WEIGHT' && l.log_date.startsWith(selectedDate));
+    const todays_weight = weightLog && weightLog.weight_grams ? formatWeight(weightLog.weight_grams, animal.weight_unit) : null;
+
+    const feedLog = animalLogs.find((l: any) => l.log_type === 'FEED' && l.log_date.startsWith(selectedDate));
+    const todays_feed = feedLog ? (feedLog.notes || 'Recorded') : null;
+
+    const historicalFeeds = animalLogs.filter((l: any) => l.log_type === 'FEED').sort((a: any, b: any) => b.log_date.localeCompare(a.log_date));
+    const last_feed = historicalFeeds.length > 0 ? (historicalFeeds[0].notes || 'Recorded') : null;
+
+    const schedules = rawSchedules.filter((s: any) => s.animal_id === animal.id).sort((a: any, b: any) => a.scheduled_date.localeCompare(b.scheduled_date));
+    const next_feed = schedules.length > 0 ? schedules[0].scheduled_date : null;
+
+    return { ...animal, todays_weight, todays_feed, last_feed, next_feed };
+  });
+
   const filteredAnimals = activeTab === 'ALL' 
-    ? sortedAnimals 
-    : sortedAnimals.filter((a: any) => (a.category || '').toUpperCase() === activeTab);
+    ? enhancedAnimals 
+    : enhancedAnimals.filter((a: any) => (a.category || '').toUpperCase() === activeTab);
 
   const renderHeaders = () => {
     if (activeTab === 'OWLS' || activeTab === 'RAPTORS') {
@@ -117,9 +179,9 @@ export function Dashboard() {
           {nameCell}
           <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.species || 'Unknown'}</td>
           <td className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{animal.ring_number || emptyNode}</td>
-          <td className="px-6 py-4 text-xs font-bold text-amber-500">{animal.todays_weight ? `${animal.todays_weight}g` : emptyNode}</td>
-          <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.last_feed || emptyNode}</td>
-          <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.todays_feed || emptyNode}</td>
+          <td className="px-6 py-4 text-xs font-bold text-amber-500 truncate max-w-[120px]">{animal.todays_weight || emptyNode}</td>
+          <td className="px-6 py-4 text-xs font-bold text-slate-500 truncate max-w-[150px]">{animal.last_feed || emptyNode}</td>
+          <td className="px-6 py-4 text-xs font-bold text-slate-500 truncate max-w-[150px]">{animal.todays_feed || emptyNode}</td>
           <td className="px-6 py-4"><span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg uppercase tracking-widest">{animal.location || 'Unknown'}</span></td>
         </>
       );
@@ -130,7 +192,7 @@ export function Dashboard() {
           {nameCell}
           <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.species || 'Unknown'}</td>
           <td className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{animal.microchip_id || emptyNode}</td>
-          <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.todays_feed || emptyNode}</td>
+          <td className="px-6 py-4 text-xs font-bold text-slate-500 truncate max-w-[180px]">{animal.todays_feed || emptyNode}</td>
           <td className="px-6 py-4"><span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg uppercase tracking-widest">{animal.location || 'Unknown'}</span></td>
         </>
       );
@@ -140,7 +202,7 @@ export function Dashboard() {
         <>
           {nameCell}
           <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.species || 'Unknown'}</td>
-          <td className="px-6 py-4 text-xs font-bold text-slate-500">{animal.todays_feed || emptyNode}</td>
+          <td className="px-6 py-4 text-xs font-bold text-slate-500 truncate max-w-[180px]">{animal.todays_feed || emptyNode}</td>
           <td className="px-6 py-4 text-[10px] font-black text-amber-500/80 uppercase tracking-widest">{animal.next_feed || emptyNode}</td>
           <td className="px-6 py-4"><span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg uppercase tracking-widest">{animal.location || 'Unknown'}</span></td>
         </>
@@ -210,11 +272,8 @@ export function Dashboard() {
           </div>
       </div>
 
-      {/* Action Bar (Controls) */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-[#0F1117] border border-slate-800/80 p-3 rounded-2xl shadow-inner">
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          
-          {/* Quick Date Controls */}
           <div className="flex items-center gap-1.5">
             <button onClick={() => adjustDate(-1)} className="p-2 bg-[#0A0B0E] border border-slate-800/80 rounded-xl text-slate-500 hover:text-emerald-400 hover:border-emerald-500/50 transition-colors shadow-inner" title="Previous Day">
               <ChevronLeft size={16} />
@@ -228,7 +287,7 @@ export function Dashboard() {
                 type="date" 
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full sm:w-36 bg-[#0A0B0E] border border-slate-800/80 rounded-xl pl-9 pr-2 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50"
+                className="w-full sm:w-36 bg-[#0A0B0E] border border-slate-800/80 rounded-xl pl-9 pr-2 py-2 text-xs font-bold text-white focus:outline-none"
               />
             </div>
             <button onClick={() => adjustDate(1)} className="p-2 bg-[#0A0B0E] border border-slate-800/80 rounded-xl text-slate-500 hover:text-emerald-400 hover:border-emerald-500/50 transition-colors shadow-inner" title="Next Day">
@@ -243,7 +302,7 @@ export function Dashboard() {
             <select 
               value={sortMode}
               onChange={(e) => setSortMode(e.target.value as any)}
-              className="w-full bg-[#0A0B0E] border border-slate-800/80 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50 appearance-none"
+              className="w-full bg-[#0A0B0E] border border-slate-800/80 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-white focus:outline-none appearance-none"
             >
               <option value="NAME_ASC">Name (A-Z)</option>
               <option value="NAME_DESC">Name (Z-A)</option>
@@ -260,7 +319,6 @@ export function Dashboard() {
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex overflow-x-auto scrollbar-hide bg-[#0F1117] border border-slate-800/80 p-1.5 rounded-2xl gap-1 shadow-inner">
         {['ALL', 'OWLS', 'RAPTORS', 'MAMMALS', 'EXOTICS', 'ARCHIVED'].map(cat => (
           <button
@@ -268,7 +326,7 @@ export function Dashboard() {
             onClick={() => setActiveTab(cat)}
             className={`flex-1 min-w-[100px] py-2.5 px-4 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap ${
               activeTab === cat 
-              ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 shadow-sm' 
+              ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-sm' 
               : 'text-slate-500 hover:text-slate-300 hover:bg-[#0A0B0E]'
             }`}
           >
@@ -277,7 +335,6 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Database Table */}
       <div className="bg-[#0F1117] rounded-3xl border border-slate-800/80 shadow-2xl overflow-hidden relative">
         <div className="w-full overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -309,7 +366,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Modals */}
       {isAddModalOpen && (
         <AnimalFormModal onClose={() => setIsAddModalOpen(false)} />
       )}

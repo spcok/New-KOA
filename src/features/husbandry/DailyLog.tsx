@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Calendar, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import AddEntryModal from './AddEntryModal';
 
 export default function DailyLog() {
@@ -10,17 +11,21 @@ export default function DailyLog() {
   
   const [modalState, setModalState] = useState<{isOpen: boolean, animal: any, type: string}>({ isOpen: false, animal: null, type: 'GENERAL' });
 
-  // 1. Sync Engine Local Cache Reads (PATCHED with queryFn)
+  // 1. Live Server-First Data Queries with Outbox Compliance
   const { data: rawAnimals = [], isLoading: loadingAnimals } = useQuery({ 
     queryKey: ['animals'], 
-    queryFn: () => [] as any[], 
-    staleTime: Infinity 
+    queryFn: async () => {
+      const { data } = await supabase.from('animals').select('*').eq('is_deleted', false);
+      return data || [];
+    }
   });
   
   const { data: rawLogs = [], isLoading: loadingLogs } = useQuery({ 
     queryKey: ['daily_logs'], 
-    queryFn: () => [] as any[], 
-    staleTime: Infinity 
+    queryFn: async () => {
+      const { data } = await supabase.from('daily_logs').select('*').eq('is_deleted', false);
+      return data || [];
+    }
   });
 
   const adjustDate = (days: number) => {
@@ -28,18 +33,18 @@ export default function DailyLog() {
     setViewDate(d.toISOString().split('T')[0]);
   };
 
-  // 2. Highly Optimized Data Filtering
+  // 2. Highly Optimized Filter Engines
   const activeAnimals = rawAnimals
     .filter((a: any) => !a.is_deleted && (a.category || '').toUpperCase() === activeCategory)
     .filter((a: any) => hideSubAccounts ? !(a.entity_type === 'individual' && a.parent_mob_id) : true)
     .sort((a: any, b: any) => (a.display_order ?? 999) - (b.display_order ?? 999));
 
-  const todaysLogs = rawLogs.filter((l: any) => l.log_date === viewDate && !l.is_deleted);
+  // Matched via startWith to avoid ISO timestamp string structural drops
+  const todaysLogs = rawLogs.filter((l: any) => l.log_date && l.log_date.startsWith(viewDate) && !l.is_deleted);
 
-  // Helper to fetch a specific cell's log
   const getLog = (animalId: string, type: string) => todaysLogs.find((l: any) => l.animal_id === animalId && l.log_type === type);
 
-  // 3. Dynamic Renderers
+  // 3. Dynamic Rendering Logic
   const renderHeaders = () => {
     const isExotic = activeCategory === 'EXOTICS';
     return (
@@ -88,12 +93,10 @@ export default function DailyLog() {
         if (log.temperature_c) displayValue = `${log.temperature_c}°C`;
         else if (log.basking_temp_c) displayValue = `${log.basking_temp_c}°C / ${log.cool_temp_c}°C`;
         else displayValue = 'Recorded';
-
-        if (log.notes) {
-          displayValue = displayValue === 'Recorded' ? log.notes : `${displayValue} (${log.notes})`;
-        }
+      } else if (type === 'FEED' && log.notes) {
+        displayValue = log.notes; // Pull specific entry string directly onto button label
       } else {
-        displayValue = log.notes || 'Recorded';
+        displayValue = 'Recorded';
       }
     }
 
@@ -101,14 +104,14 @@ export default function DailyLog() {
       <td className="px-4 py-3 text-center">
         <button 
           onClick={() => setModalState({ isOpen: true, animal, type })}
-          className={`w-full py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border max-w-full truncate ${
+          className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border max-w-[200px] truncate ${
             hasData 
-              ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-inner font-bold' 
+              ? 'bg-emerald-600/10 text-emerald-400 border-emerald-500/20 shadow-inner' 
               : 'bg-[#0A0B0E] text-slate-600 border-slate-800/80 hover:bg-slate-800/50 hover:text-emerald-400 hover:border-emerald-500/50'
           }`}
           title={hasData ? displayValue : undefined}
         >
-          {hasData ? <Check size={13} className="shrink-0 text-emerald-400" /> : <Plus size={13} className="opacity-50 shrink-0" />}
+          {hasData ? <Check size={14} className="shrink-0 text-emerald-400" /> : <Plus size={14} className="opacity-50 shrink-0" />}
           <span className="truncate">{displayValue}</span>
         </button>
       </td>
