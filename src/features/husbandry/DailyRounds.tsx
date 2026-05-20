@@ -131,14 +131,17 @@ export default function DailyRounds() {
   const handleSignOff = async () => {
     if (!session?.user?.id) return;
     
-    const roundsToSave = Object.entries(pendingChecks).map(([id, data]) => ({
-        ...data,
-        animal_id: id,
-        date: viewDate,
-        shift: roundType,
-        completed_at: new Date().toISOString(),
-        completed_by: session.user.id
-    }));
+    const roundsToSave = Object.keys(pendingChecks).map(id => {
+        const data = pendingChecks[id] || {};
+        return {
+            ...data,
+            animal_id: id,
+            date: viewDate,
+            shift: roundType,
+            completed_at: new Date().toISOString(),
+            completed_by: session.user.id
+        };
+    });
 
     await dailyRoundService.bulkSaveRound(roundsToSave as DailyRound[], session.user.id);
     

@@ -2,46 +2,50 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Heart, AlertCircle, Scale, ClipboardCheck, CheckCircle, Plus, Calendar, ArrowDownAZ, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { AnimalFormModal } from '../animals/AnimalFormModal';
+import { animalService } from '../../services/animalService';
+import { dailyLogService } from '../../services/dailyLogService';
+import { feedingService } from '../../services/feedingService';
+import { taskService } from '../../services/taskService';
+import type { Animal, DailyLog, FeedingSchedule, Task } from '../../types/schema';
+
+interface EnhancedAnimal extends Animal {
+  todays_weight: string | null;
+  todays_feed: string | null;
+  last_feed: string | null;
+  next_feed: string | null;
+}
+
+type SortMode = 'NAME_ASC' | 'NAME_DESC' | 'CUSTOM';
 
 export function Dashboard() {
-  const [activeTab, setActiveTab] = useState('ALL');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [sortMode, setSortMode] = useState<'NAME_ASC' | 'NAME_DESC' | 'CUSTOM'>('NAME_ASC');
+  const [activeTab, setActiveTab] = useState<string>('ALL');
+  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [sortMode, setSortMode] = useState<SortMode>('NAME_ASC');
 
-  // 1. Live Query Hooks fetching directly from the tables
-  const { data: rawAnimals = [] } = useQuery({ 
+  // 1. Live Query Hooks fetching strictly through service layers & parameterized to selectedDate
+  const { data: rawAnimals = [] } = useQuery<Animal[]>({ 
     queryKey: ['animals'],
-    queryFn: async () => {
-      const { data } = await supabase.from('animals').select('*').eq('is_deleted', false);
-      return data || [];
-    }
+    queryFn: () => animalService.getAnimals()
   });
   
-  const { data: rawTasks = [] } = useQuery({ 
+  const { data: rawTasks = [] } = useQuery<Task[]>({ 
     queryKey: ['tasks'],
-    queryFn: async () => {
-      const { data } = await supabase.from('tasks').select('*').eq('is_deleted', false);
-      return data || [];
-    }
+    queryFn: () => taskService.getPendingTasks()
   });
 
-  const { data: rawLogs = [] } = useQuery({
-    queryKey: ['daily_logs'],
-    queryFn: async () => {
-      const { data } = await supabase.from('daily_logs').select('*').eq('is_deleted', false);
-      return data || [];
-    }
+  const { data: dashboardLogs = { todaysLogs: [], lastFeeds: [] } } = useQuery<{ todaysLogs: DailyLog[], lastFeeds: DailyLog[] }>({
+    queryKey: ['dashboard_logs', selectedDate],
+    queryFn: () => dailyLogService.getDashboardLogs(selectedDate)
   });
 
-  const { data: rawSchedules = [] } = useQuery({
-    queryKey: ['feeding_schedules'],
-    queryFn: async () => {
-      const { data } = await supabase.from('feeding_schedules').select('*').eq('is_deleted', false).eq('is_completed', false);
-      return data || [];
-    }
+  const todaysLogs = dashboardLogs?.todaysLogs || [];
+  const lastFeeds = dashboardLogs?.lastFeeds || [];
+
+  const { data: rawSchedules = [] } = useQuery<FeedingSchedule[]>({
+    queryKey: ['feeding_schedules', selectedDate],
+    queryFn: () => feedingService.getSchedulesForDashboard(selectedDate)
   });
 
   const adjustDate = (days: number) => {
@@ -79,31 +83,32 @@ export function Dashboard() {
     return `${g}g`;
   };
 
-  const activeAnimals = rawAnimals.filter((a: any) => !a.is_deleted);
+  const activeAnimals = rawAnimals.filter((a) => !a.is_deleted);
   
-  const sortedAnimals = [...activeAnimals].sort((a: any, b: any) => {
+  const sortedAnimals = [...activeAnimals].sort((a, b) => {
     if (sortMode === 'NAME_ASC') return (a.name || '').localeCompare(b.name || '');
     if (sortMode === 'NAME_DESC') return (b.name || '').localeCompare(a.name || '');
     if (sortMode === 'CUSTOM') return (a.display_order ?? 999) - (b.display_order ?? 999);
     return 0;
   });
 
-  const tasks = rawTasks.filter((t: any) => t.status === 'PENDING' && !t.is_deleted);
+  const tasks = rawTasks;
 
   // 2. Real-time Aggregation and Dynamic Stat Population Engine
-  const enhancedAnimals = sortedAnimals.map((animal: any) => {
-    const animalLogs = rawLogs.filter((l: any) => l.animal_id === animal.id);
+  const enhancedAnimals: EnhancedAnimal[] = sortedAnimals.map((animal) => {
+    const animalId = animal.id as string;
+    const animalTodaysLogs = todaysLogs.filter((l) => l.animal_id === animalId);
     
-    const weightLog = animalLogs.find((l: any) => l.log_type === 'WEIGHT' && l.log_date.startsWith(selectedDate));
+    const weightLog = animalTodaysLogs.find((l) => l.log_type === 'WEIGHT');
     const todays_weight = weightLog && weightLog.weight_grams ? formatWeight(weightLog.weight_grams, animal.weight_unit) : null;
 
-    const feedLog = animalLogs.find((l: any) => l.log_type === 'FEED' && l.log_date.startsWith(selectedDate));
+    const feedLog = animalTodaysLogs.find((l) => l.log_type === 'FEED');
     const todays_feed = feedLog ? (feedLog.notes || 'Recorded') : null;
 
-    const historicalFeeds = animalLogs.filter((l: any) => l.log_type === 'FEED').sort((a: any, b: any) => b.log_date.localeCompare(a.log_date));
-    const last_feed = historicalFeeds.length > 0 ? (historicalFeeds[0].notes || 'Recorded') : null;
+    const lastFeedLog = lastFeeds.find((l) => l.animal_id === animalId);
+    const last_feed = lastFeedLog ? (lastFeedLog.notes || 'Recorded') : null;
 
-    const schedules = rawSchedules.filter((s: any) => s.animal_id === animal.id).sort((a: any, b: any) => a.scheduled_date.localeCompare(b.scheduled_date));
+    const schedules = rawSchedules.filter((s) => s.animal_id === animalId);
     const next_feed = schedules.length > 0 ? schedules[0].scheduled_date : null;
 
     return { ...animal, todays_weight, todays_feed, last_feed, next_feed };
@@ -111,7 +116,7 @@ export function Dashboard() {
 
   const filteredAnimals = activeTab === 'ALL' 
     ? enhancedAnimals 
-    : enhancedAnimals.filter((a: any) => (a.category || '').toUpperCase() === activeTab);
+    : enhancedAnimals.filter((a) => (a.category || '').toUpperCase() === activeTab);
 
   const renderHeaders = () => {
     if (activeTab === 'OWLS' || activeTab === 'RAPTORS') {
@@ -159,13 +164,13 @@ export function Dashboard() {
     );
   };
 
-  const renderRowCells = (animal: any) => {
+  const renderRowCells = (animal: EnhancedAnimal) => {
     const emptyNode = <span className="text-slate-700">--</span>;
     const nameCell = (
       <td className="px-6 py-4 text-xs font-bold">
         <Link 
           to="/animals/$id" 
-          params={{ id: animal.id } as any}
+          params={{ id: animal.id as string }}
           className="text-emerald-400 hover:text-emerald-300 transition-colors underline decoration-emerald-500/30 underline-offset-4"
         >
           {animal.name || 'Unnamed'}
@@ -240,7 +245,7 @@ export function Dashboard() {
                   <span className="bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black px-2.5 py-1 rounded-lg">{tasks.length}</span>
               </div>
               <div className="mt-4 flex-1 overflow-y-auto pr-2 space-y-2 scrollbar-hide relative z-10">
-                  {tasks.length > 0 ? tasks.map((t: any) => (
+                  {tasks.length > 0 ? tasks.map((t) => (
                       <div key={t.id} className="flex items-start gap-3 p-3 rounded-xl bg-[#0A0B0E] border border-slate-800/80 shadow-inner">
                           <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0"/>
                           <div>
@@ -301,7 +306,7 @@ export function Dashboard() {
             <ArrowDownAZ className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
             <select 
               value={sortMode}
-              onChange={(e) => setSortMode(e.target.value as any)}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
               className="w-full bg-[#0A0B0E] border border-slate-800/80 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-white focus:outline-none appearance-none"
             >
               <option value="NAME_ASC">Name (A-Z)</option>
@@ -355,7 +360,7 @@ export function Dashboard() {
                   </td>
                 </tr>
               ) : (
-                filteredAnimals.map((animal: any) => (
+                filteredAnimals.map((animal) => (
                   <tr key={animal.id} className="hover:bg-[#0A0B0E] transition-colors group">
                     {renderRowCells(animal)}
                   </tr>

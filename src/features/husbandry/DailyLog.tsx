@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Calendar, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { dailyLogService } from '../../services/dailyLogService';
+import { Animal, DailyLog as DailyLogType } from '../../types/schema';
 import AddEntryModal from './AddEntryModal';
 
 export default function DailyLog() {
@@ -9,10 +11,10 @@ export default function DailyLog() {
   const [activeCategory, setActiveCategory] = useState('OWLS');
   const [hideSubAccounts, setHideSubAccounts] = useState(true);
   
-  const [modalState, setModalState] = useState<{isOpen: boolean, animal: any, type: string}>({ isOpen: false, animal: null, type: 'GENERAL' });
+  const [modalState, setModalState] = useState<{isOpen: boolean, animal: Animal | null, type: string}>({ isOpen: false, animal: null, type: 'GENERAL' });
 
-  // 1. Live Server-First Data Queries with Outbox Compliance
-  const { data: rawAnimals = [], isLoading: loadingAnimals } = useQuery({ 
+  // 1. Live Server-First Queries routed through proper boundaries
+  const { data: animals = [], isLoading: loadingAnimals } = useQuery<Animal[]>({ 
     queryKey: ['animals'], 
     queryFn: async () => {
       const { data } = await supabase.from('animals').select('*').eq('is_deleted', false);
@@ -20,12 +22,10 @@ export default function DailyLog() {
     }
   });
   
-  const { data: rawLogs = [], isLoading: loadingLogs } = useQuery({ 
-    queryKey: ['daily_logs'], 
-    queryFn: async () => {
-      const { data } = await supabase.from('daily_logs').select('*').eq('is_deleted', false);
-      return data || [];
-    }
+  // Parameterized query using the strict service layer
+  const { data: todaysLogs = [], isLoading: loadingLogs } = useQuery<DailyLogType[]>({ 
+    queryKey: ['daily_logs', viewDate], 
+    queryFn: () => dailyLogService.getLogsByDate(viewDate)
   });
 
   const adjustDate = (days: number) => {
@@ -33,16 +33,13 @@ export default function DailyLog() {
     setViewDate(d.toISOString().split('T')[0]);
   };
 
-  // 2. Highly Optimized Filter Engines
-  const activeAnimals = rawAnimals
-    .filter((a: any) => !a.is_deleted && (a.category || '').toUpperCase() === activeCategory)
-    .filter((a: any) => hideSubAccounts ? !(a.entity_type === 'individual' && a.parent_mob_id) : true)
-    .sort((a: any, b: any) => (a.display_order ?? 999) - (b.display_order ?? 999));
+  // 2. Strict Typed Filters
+  const activeAnimals = animals
+    .filter((a) => !a.is_deleted && (a.category || '').toUpperCase() === activeCategory)
+    .filter((a) => hideSubAccounts ? !(a.entity_type === 'individual' && a.parent_mob_id) : true)
+    .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
 
-  // Matched via startWith to avoid ISO timestamp string structural drops
-  const todaysLogs = rawLogs.filter((l: any) => l.log_date && l.log_date.startsWith(viewDate) && !l.is_deleted);
-
-  const getLog = (animalId: string, type: string) => todaysLogs.find((l: any) => l.animal_id === animalId && l.log_type === type);
+  const getLog = (animalId: string, type: string) => todaysLogs.find((l) => l.animal_id === animalId && l.log_type === type);
 
   // 3. Dynamic Rendering Logic
   const renderHeaders = () => {
@@ -58,12 +55,14 @@ export default function DailyLog() {
     );
   };
 
-  const renderCell = (animal: any, type: string) => {
+  const renderCell = (animal: Animal, type: string) => {
+    if (!animal.id) return <td className="px-4 py-3" />;
+    
     const log = getLog(animal.id, type);
     const hasData = !!log;
     
     let displayValue = '--';
-    if (hasData) {
+    if (hasData && log) {
       if (type === 'WEIGHT' && log.weight_grams) {
         const g = log.weight_grams;
         const unit = (log.weight_unit || animal.weight_unit || 'g').toLowerCase();
@@ -94,7 +93,7 @@ export default function DailyLog() {
         else if (log.basking_temp_c) displayValue = `${log.basking_temp_c}°C / ${log.cool_temp_c}°C`;
         else displayValue = 'Recorded';
       } else if (type === 'FEED' && log.notes) {
-        displayValue = log.notes; // Pull specific entry string directly onto button label
+        displayValue = log.notes;
       } else {
         displayValue = 'Recorded';
       }
@@ -163,7 +162,7 @@ export default function DailyLog() {
               ) : activeAnimals.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-xs font-black text-slate-500 uppercase tracking-widest">No animals in this category</td></tr>
               ) : (
-                activeAnimals.map((animal: any) => (
+                activeAnimals.map((animal) => (
                   <tr key={animal.id} className="hover:bg-[#0A0B0E] transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
@@ -194,7 +193,7 @@ export default function DailyLog() {
           onClose={() => setModalState({ ...modalState, isOpen: false })} 
           animal={modalState.animal} 
           initialType={modalState.type} 
-          existingLog={getLog(modalState.animal.id, modalState.type)} 
+          existingLog={getLog(modalState.animal.id!, modalState.type)} 
           viewDate={viewDate} 
         />
       )}

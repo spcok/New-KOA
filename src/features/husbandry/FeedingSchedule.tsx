@@ -76,8 +76,8 @@ export default function FeedingSchedule() {
   }, [displayedSchedules]);
 
   // 2. TanStack Form Definition
+  const session = useAuthStore(state => state.session);
   const form = useForm({
-    validatorAdapter: zodValidator,
     defaultValues: {
       animal_id: '',
       food_type: '',
@@ -115,7 +115,8 @@ export default function FeedingSchedule() {
             interval_days: value.schedule_mode === 'interval' ? value.interval_days : null
         }));
 
-        await feedingService.bulkCreateSchedules(newSchedules as Omit<FeedingScheduleType, 'id'>[]);
+        if (!session?.user?.id) return;
+        await feedingService.bulkCreateSchedules(newSchedules as Omit<FeedingScheduleType, 'id' | 'created_at' | 'updated_at'>[], session.user.id);
         form.reset();
     }
   });
@@ -314,7 +315,8 @@ export default function FeedingSchedule() {
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <button onClick={async () => {
-                                                    await feedingService.deleteSchedule(schedule.id!);
+                                                    if (!session?.user?.id) return;
+                                                    await feedingService.deleteSchedule(schedule.id!, session.user.id);
                                                     queryClient.invalidateQueries({ queryKey: ['feeding_schedules'] });
                                                 }} className="p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
                                                     <Trash2 size={16} />
@@ -352,7 +354,8 @@ export default function FeedingSchedule() {
                                             </td>
                                             <td className="px-4 py-3 text-right">
                                                 <button onClick={async () => {
-                                                    await Promise.all(group.child_ids.map((id: string) => feedingService.deleteSchedule(id)));
+                                                    if (!session?.user?.id) return;
+                                                    await Promise.all(group.child_ids.map((id: string) => feedingService.deleteSchedule(id, session.user.id!)));
                                                     queryClient.invalidateQueries({ queryKey: ['feeding_schedules'] });
                                                 }} className="p-2 text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Delete entire group">
                                                     <Trash2 size={16} />

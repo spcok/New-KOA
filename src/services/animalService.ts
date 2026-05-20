@@ -6,6 +6,14 @@ import { AnimalSchema, Animal } from '../types/schema';
 const generateUUID = () => crypto.randomUUID();
 
 export const animalService = {
+  getAnimals: async (): Promise<Animal[]> => {
+    const { data, error } = await supabase.from('animals').select('*').eq('is_deleted', false);
+    if (error) {
+      console.error('Error fetching animals:', error);
+      throw error;
+    }
+    return data as Animal[];
+  },
   saveAnimal: async (data: Partial<Animal>, imageFile?: File, mapFile?: File) => {
     // 1. Sanitize Payload: Convert empty strings to null
     const sanitizedData = Object.fromEntries(

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { dailyLogService } from '../../services/dailyLogService';
 import { X, Save } from 'lucide-react';
+import { Animal, DailyLog } from '../../types/schema';
+import { useAuthStore } from '../../store/authStore';
 
 export default function AddEntryModal({ 
   isOpen, onClose, animal, initialType, existingLog, viewDate 
 }: { 
-  isOpen: boolean, onClose: () => void, animal: any, initialType: string, existingLog: any, viewDate: string 
+  isOpen: boolean, onClose: () => void, animal: Animal, initialType: string, existingLog: DailyLog | undefined, viewDate: string 
 }) {
   const [time, setTime] = useState(
     existingLog?.log_date 
@@ -60,6 +62,7 @@ export default function AddEntryModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const submitDate = new Date(`${viewDate}T${time}:00`).toISOString();
+    const userId = useAuthStore.getState().user?.id;
     
     let finalNotes = notes;
     if (!existingLog) {
@@ -87,9 +90,14 @@ export default function AddEntryModal({
       }
     }
 
+    if (!userId) {
+      console.error("Cannot save log: No authenticated user.");
+      return;
+    }
+
     await dailyLogService.saveLog({
       id: existingLog?.id,
-      animal_id: animal.id,
+      animal_id: animal.id as string,
       log_date: submitDate,
       log_type: initialType,
       notes: finalNotes,
@@ -98,7 +106,9 @@ export default function AddEntryModal({
       temperature_c: ambientTemp === '' ? null : Number(ambientTemp),
       basking_temp_c: baskingTemp === '' ? null : Number(baskingTemp),
       cool_temp_c: coolTemp === '' ? null : Number(coolTemp),
-    });
+      ...(existingLog ? {} : { created_by: userId }),
+      modified_by: userId,
+    }, userId);
     onClose();
   };
 
