@@ -146,6 +146,22 @@ export const timesheetsCollection = createCollection(
   })
 );
 
+export const rotasCollection = createCollection(
+  electricCollectionOptions({
+    id: 'rotas',
+    getKey: (row: any) => row.id,
+    shapeOptions: { url: BASE_SHAPE_URL, params: { table: 'rotas' } }
+  })
+);
+
+export const holidayRequestsCollection = createCollection(
+  electricCollectionOptions({
+    id: 'holiday_requests',
+    getKey: (row: any) => row.id,
+    shapeOptions: { url: BASE_SHAPE_URL, params: { table: 'holiday_requests' } }
+  })
+);
+
 export const usersCollection = createCollection(
   electricCollectionOptions({
     id: 'users',
