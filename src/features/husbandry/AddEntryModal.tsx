@@ -4,26 +4,38 @@ import { X, Save } from 'lucide-react';
 import { Animal, DailyLog } from '../../types/schema';
 import { useAuthStore } from '../../store/authStore';
 
+interface AddEntryModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  animal: Animal;
+  initialType: string;
+  existingLog: DailyLog | undefined;
+  viewDate: string;
+}
+
 export default function AddEntryModal({ 
   isOpen, onClose, animal, initialType, existingLog, viewDate 
-}: { 
-  isOpen: boolean, onClose: () => void, animal: Animal, initialType: string, existingLog: DailyLog | undefined, viewDate: string 
-}) {
-  const [time, setTime] = useState(
+}: AddEntryModalProps) {
+  
+  // IMMUTABLE STORE LAW: Accessing state with explicit selection
+  const user = useAuthStore((s) => s.user);
+
+  const [time, setTime] = useState(() => 
     existingLog?.log_date 
       ? new Date(existingLog.log_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
       : new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   );
+  
   const [initials, setInitials] = useState('');
-  const [notes, setNotes] = useState(existingLog?.notes || '');
+  const [notes, setNotes] = useState(() => existingLog?.notes || '');
   
   const unit = (animal.weight_unit || 'g').toLowerCase();
   const isLbs = unit === 'lbs' || unit === 'lb';
   const isOz = unit === 'oz';
   const isKg = unit === 'kg';
 
-  // Parse grams back to imperial fractions for editing
-  const parseExistingWeight = () => {
+  // Hydrate weight states directly inline upon structural initialization
+  const [weightData, setWeightData] = useState(() => {
     const g = existingLog?.weight_grams;
     if (g == null) return { lbs: '', oz: '', eighths: '', standard: '' };
     
@@ -31,11 +43,10 @@ export default function AddEntryModal({
       const totalOz = g / 28.349523125;
       let eighths = Math.round((totalOz - Math.floor(totalOz)) * 8);
       let oz = Math.floor(totalOz);
-      
       if (eighths === 8) { eighths = 0; oz++; }
       
       if (isLbs) {
-        let lbs = Math.floor(oz / 16);
+        const lbs = Math.floor(oz / 16);
         oz = oz % 16;
         return { lbs: lbs.toString(), oz: oz.toString(), eighths: eighths ? eighths.toString() : '', standard: '' };
       } else {
@@ -46,13 +57,11 @@ export default function AddEntryModal({
     } else {
       return { lbs: '', oz: '', eighths: '', standard: g.toString() };
     }
-  };
+  });
 
-  const [weightData, setWeightData] = useState(parseExistingWeight());
-
-  const [ambientTemp, setAmbientTemp] = useState(existingLog?.temperature_c ?? '');
-  const [baskingTemp, setBaskingTemp] = useState(existingLog?.basking_temp_c ?? '');
-  const [coolTemp, setCoolTemp] = useState(existingLog?.cool_temp_c ?? '');
+  const [ambientTemp, setAmbientTemp] = useState(() => existingLog?.temperature_c?.toString() ?? '');
+  const [baskingTemp, setBaskingTemp] = useState(() => existingLog?.basking_temp_c?.toString() ?? '');
+  const [coolTemp, setCoolTemp] = useState(() => existingLog?.cool_temp_c?.toString() ?? '');
   const [mistLevel, setMistLevel] = useState('Medium');
 
   if (!isOpen) return null;
@@ -61,8 +70,12 @@ export default function AddEntryModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) {
+      console.error("Cannot save log: No authenticated identity user present.");
+      return;
+    }
+
     const submitDate = new Date(`${viewDate}T${time}:00`).toISOString();
-    const userId = useAuthStore.getState().user?.id;
     
     let finalNotes = notes;
     if (!existingLog) {
@@ -90,25 +103,22 @@ export default function AddEntryModal({
       }
     }
 
-    if (!userId) {
-      console.error("Cannot save log: No authenticated user.");
-      return;
-    }
-
+    // NULL LAW: Strictly evaluate empty configurations to explicit null markers
     await dailyLogService.saveLog({
       id: existingLog?.id,
       animal_id: animal.id as string,
       log_date: submitDate,
       log_type: initialType,
-      notes: finalNotes,
+      notes: finalNotes || null,
       weight_grams: finalWeightGrams,
       weight_unit: animal.weight_unit || 'g',
       temperature_c: ambientTemp === '' ? null : Number(ambientTemp),
       basking_temp_c: baskingTemp === '' ? null : Number(baskingTemp),
       cool_temp_c: coolTemp === '' ? null : Number(coolTemp),
-      ...(existingLog ? {} : { created_by: userId }),
-      modified_by: userId,
-    }, userId);
+      ...(existingLog ? {} : { created_by: user.id }),
+      modified_by: user.id,
+    }, user.id);
+
     onClose();
   };
 
@@ -147,7 +157,6 @@ export default function AddEntryModal({
           {initialType === 'WEIGHT' && (
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Weight Data</label>
-              
               {isLbs ? (
                 <div className="flex gap-2">
                   <div className="flex-1 relative">

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UploadCloud, Image as ImageIcon, Map, X } from 'lucide-react';
 import { animalService } from '../../services/animalService';
+import { Animal } from '../../types/schema';
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <div className="bg-[#0A0B0E] border border-slate-800/80 rounded-2xl p-5 shadow-inner space-y-4">
@@ -9,35 +10,49 @@ const Section = ({ title, children }: { title: string, children: React.ReactNode
   </div>
 );
 
-const Field = ({ label, field, type = 'text', options, formData, update, required }: any) => (
+interface FieldProps {
+  label: string;
+  field: keyof Animal;
+  type?: 'text' | 'number' | 'checkbox' | 'select' | 'date';
+  options?: string[];
+  formData: Partial<Animal>;
+  update: (field: keyof Animal, value: any) => void;
+  required?: boolean;
+}
+
+const Field = ({ label, field, type = 'text', options, formData, update, required }: FieldProps) => (
   <div className="space-y-1.5">
     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1">
       {label} {required && <span className="text-rose-500 text-xs">*</span>}
     </label>
     {type === 'select' ? (
-      <select required={required} value={formData[field] || ''} onChange={(e) => update(field, e.target.value)} className="w-full bg-[#0F1117] border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50">
+      <select required={required} value={(formData[field] as string) || ''} onChange={(e) => update(field, e.target.value)} className="w-full bg-[#0F1117] border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50">
         <option value="">Select...</option>
-        {options.map((o: string) => <option key={o} value={o}>{o}</option>)}
+        {options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
       </select>
     ) : type === 'checkbox' ? (
       <div className="flex items-center h-10">
         <input type="checkbox" checked={!!formData[field]} onChange={(e) => update(field, e.target.checked)} className="w-5 h-5 rounded bg-[#0F1117] border-slate-800/80 text-emerald-500 focus:ring-emerald-500" />
       </div>
     ) : (
-      <input required={required} type={type} value={formData[field] || ''} onChange={(e) => update(field, type === 'number' ? Number(e.target.value) : e.target.value)} className="w-full bg-[#0F1117] border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50" />
+      <input required={required} type={type} value={(formData[field] as string | number) || ''} onChange={(e) => update(field, type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value)} className="w-full bg-[#0F1117] border border-slate-800/80 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-emerald-500/50" />
     )}
   </div>
 );
 
-export function AnimalFormModal({ initialData, onClose }: { initialData?: any, onClose: () => void }) {
-  const [formData, setFormData] = useState(initialData || { 
+interface AnimalFormModalProps {
+  initialData?: Animal;
+  onClose: () => void;
+}
+
+export function AnimalFormModal({ initialData, onClose }: AnimalFormModalProps) {
+  const [formData, setFormData] = useState<Partial<Animal>>(() => initialData || { 
     weight_unit: 'g', 
     entity_type: 'individual',
     census_count: 1,
     red_list_status: 'NE'
   });
   
-  // Storage for raw File objects before upload
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [mapFile, setMapFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -49,7 +64,7 @@ export function AnimalFormModal({ initialData, onClose }: { initialData?: any, o
     if (type === 'map') setMapFile(file);
   };
 
-  const update = (field: string, value: any) => setFormData((prev: any) => ({ ...prev, [field]: value }));
+  const update = (field: keyof Animal, value: any) => setFormData((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +201,7 @@ export function AnimalFormModal({ initialData, onClose }: { initialData?: any, o
         </form>
         <div className="p-5 border-t border-slate-800/80 bg-[#0F1117]/90 backdrop-blur shrink-0 flex justify-end z-20">
           <button type="submit" form="animal-form" disabled={isUploading} className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.15)]">
-            {isUploading ? 'Syncing...' : (initialData ? 'Save Changes' : 'Register Animal')}
+            {isUploading ? 'Syncing...' : (formData.id ? 'Save Changes' : 'Register Animal')}
           </button>
         </div>
       </div>

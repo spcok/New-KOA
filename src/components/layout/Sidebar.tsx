@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouter } from '@tanstack/react-router';
+import { useAuthStore } from '../../store/authStore';
 import { 
   LayoutDashboard, PawPrint, Stethoscope, ClipboardList, ShieldAlert,
   CalendarDays, Apple, Syringe, Activity, BriefcaseMedical, AlertTriangle, 
   Wrench, Users, Clock, CalendarHeart, FileBadge, FileWarning, 
   BarChart3, Settings, HelpCircle, ChevronDown, ChevronRight, HeartPulse,
-  Utensils
+  Utensils, LogOut
 } from 'lucide-react';
 
 const navGroups = [
@@ -59,7 +60,11 @@ const navGroups = [
   }
 ];
 
-function NavGroup({ group }: { group: any, key?: React.Key }) {
+interface NavGroupProps {
+  group: typeof navGroups[0];
+}
+
+function NavGroup({ group }: NavGroupProps) {
   const [isOpen, setIsOpen] = useState(true);
   return (
     <div className="mb-4">
@@ -75,7 +80,7 @@ function NavGroup({ group }: { group: any, key?: React.Key }) {
       </button>
       {isOpen && (
         <div className="mt-1 space-y-0.5">
-          {group.items.map((item: any) => (
+          {group.items.map((item) => (
             <Link
               key={item.name}
               to={item.to}
@@ -92,6 +97,17 @@ function NavGroup({ group }: { group: any, key?: React.Key }) {
 }
 
 export function Sidebar() {
+  const router = useRouter();
+  
+  // IMMUTABLE ZUSTAND STORE LAW: Exact isolated selectors
+  const session = useAuthStore((s) => s.session);
+  const signOut = useAuthStore((s) => s.signOut);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.navigate({ to: '/login' });
+  };
+
   return (
     <div className="w-64 bg-[#0F1117] border-r border-slate-800/80 flex flex-col h-full shrink-0">
       <div className="h-16 flex items-center px-6 border-b border-slate-800/80 shrink-0">
@@ -115,6 +131,18 @@ export function Sidebar() {
           <NavGroup key={group.title} group={group} />
         ))}
       </nav>
+
+      {session && (
+        <div className="p-4 border-t border-slate-800/80 shrink-0">
+          <button 
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 hover:bg-rose-500/5 border border-transparent hover:border-rose-500/10 transition-all"
+          >
+            <LogOut size={16} className="shrink-0" />
+            Sign Out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
