@@ -14,7 +14,9 @@ export const animalService = {
     }
     return data as Animal[];
   },
-  saveAnimal: async (data: Partial<Animal>, imageFile?: File, mapFile?: File) => {
+  
+  // FIXED: Now requires userId to satisfy Zod schema rules
+  saveAnimal: async (data: Partial<Animal>, userId: string, imageFile?: File, mapFile?: File) => {
     // 1. Sanitize Payload: Convert empty strings to null
     const sanitizedData = Object.fromEntries(
       Object.entries(data).map(([key, value]) => [
@@ -53,7 +55,7 @@ export const animalService = {
       }
     }
     
-    // 3. Iron-Clad Schema Mapping
+    // 3. Iron-Clad Schema Mapping & Auth Binding
     const rawPayload = {
       ...sanitizedData,
       id: recordId,
@@ -71,11 +73,13 @@ export const animalService = {
       is_quarantine: !!sanitizedData.is_quarantine,
       archived: !!sanitizedData.archived,
       is_deleted: false,
-      updated_at: new Date().toISOString(),
-      ...(isNew ? { created_at: new Date().toISOString() } : {})
+      created_by: isNew ? userId : (sanitizedData.created_by || userId),
+      modified_by: userId,
+      created_at: isNew ? new Date().toISOString() : sanitizedData.created_at,
+      updated_at: new Date().toISOString()
     };
 
-    // 4. The ZOD Shield: Will throw a hard error here if anything violates the database rules
+    // 4. The ZOD Shield
     const payload = AnimalSchema.parse(rawPayload);
 
     // 5. Optimistic UI Update (Inject into RAM)
@@ -91,7 +95,6 @@ export const animalService = {
         console.error('Supabase Upsert Error:', error.message);
         throw error;
       }
-      console.log('Successfully saved to Supabase');
     } catch (error) {
       console.warn('Network offline or Postgres rejection. Failing over to local Outbox.', error);
       useOutboxStore.getState().addMutation({

@@ -6,8 +6,7 @@ import { queryClient } from '../lib/db';
 const generateUUID = () => crypto.randomUUID();
 
 export const incidentService = {
-  getRecentIncidents: async (): Promise<Incident[]> => {
-    // Limit to 100 to prevent memory bloat, ordered by most recent
+  getIncidents: async (): Promise<Incident[]> => {
     const { data, error } = await supabase
       .from('incidents')
       .select('*')
@@ -23,25 +22,30 @@ export const incidentService = {
     return data as Incident[];
   },
 
-  saveIncident: async (data: Partial<Incident>, userId: string): Promise<void> => {
-    // 1. Strict Payload Construction & Context Binding
+  saveIncident: async (data: Partial<Incident>): Promise<void> => {
+    // 1. NULL LAW: Sanitize payload to replace empty strings with nulls
+    const sanitizedData = Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        key,
+        value === '' ? null : value
+      ])
+    );
+
     const payload = IncidentSchema.parse({
-      ...data,
-      id: data.id || generateUUID(),
-      reported_by: data.reported_by || userId,
-      created_by: data.id ? data.created_by : userId,
-      modified_by: userId,
-      created_at: data.id ? data.created_at : new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      ...sanitizedData,
+      id: sanitizedData.id || generateUUID(),
+      animal_involved: sanitizedData.animal_involved ?? false,
+      first_aid_required: sanitizedData.first_aid_required ?? false,
+      investigation_status: sanitizedData.investigation_status || 'OPEN',
+      modified_at: new Date().toISOString(),
+      created_at: sanitizedData.id ? sanitizedData.created_at : new Date().toISOString(),
       is_deleted: false,
     });
 
     try {
-      // 2. Direct Sync Attempt
       const { error } = await supabase.from('incidents').upsert(payload);
       if (error) throw error;
     } catch (error) {
-      // 3. Fallback Outbox Routing
       console.warn("Network offline. Queueing Incident Log to outbox.", error);
       useOutboxStore.getState().addMutation({
         id: generateUUID(),
@@ -51,7 +55,6 @@ export const incidentService = {
       });
     }
     
-    // 4. Force Cache Invalidation to refresh UI
     queryClient.invalidateQueries({ queryKey: ['incidents'] });
   }
 };

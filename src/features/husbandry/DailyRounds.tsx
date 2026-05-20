@@ -6,21 +6,21 @@ import {
 import { dailyRoundService } from '../../services/dailyRoundService';
 import { Animal, DailyRound } from '../../types/schema';
 import { useAuthStore } from '../../store/authStore';
-import { supabase } from '../../lib/supabase';
+import { supabase, getDynamicImageUrl } from '../../lib/supabase';
 
 type ReportType = 'HEALTH' | 'WATER' | 'SECURE';
 
-// Dedicated Avatar Component to handle graceful offline/timeout fallbacks natively in React
 const AnimalAvatar = ({ animal }: { animal: Animal }) => {
   const [imgError, setImgError] = useState(false);
+  const imageUrl = getDynamicImageUrl(animal.image_url);
 
-  if (!animal.image_url || imgError) {
+  if (!imageUrl || imgError) {
     return <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>;
   }
 
   return (
     <img 
-      src={animal.image_url} 
+      src={imageUrl} 
       alt={animal.name || 'Animal'} 
       className="w-full h-full object-cover transition-opacity duration-300"
       onError={() => setImgError(true)}
@@ -43,7 +43,6 @@ export default function DailyRounds() {
   const [reportModal, setReportModal] = useState<{ open: boolean, animalId: string | null, type: ReportType | null }>({ open: false, animalId: null, type: null });
   const [issueText, setIssueText] = useState('');
 
-  // 1. Data Fetch: Core Animals List
   const { data: animals = [], isLoading: loadingAnimals } = useQuery({ 
     queryKey: ['animals'], 
     queryFn: async () => {
@@ -52,7 +51,6 @@ export default function DailyRounds() {
     }
   });
 
-  // 2. Data Fetch: Rounds for the currently selected Date & Shift
   const { data: roundsData, isLoading: loadingRounds } = useQuery({ 
     queryKey: ['daily_rounds', viewDate, roundType], 
     queryFn: async () => {
@@ -66,7 +64,6 @@ export default function DailyRounds() {
     }
   });
 
-  // 3. Stable Lifecycle Synchronizer: Prevents Infinite Re-render Depth Loops
   useEffect(() => {
     if (roundsData && roundsData.length > 0) {
       const initialMap: Record<string, Partial<DailyRound>> = {};

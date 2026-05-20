@@ -205,54 +205,47 @@ export const IsolationLogSchema = z.object({
 });
 
 // ==========================================
-// 3. SAFETY & COMPLIANCE
+// 3. SAFETY & COMPLIANCE (UPDATED)
 // ==========================================
 
 export const IncidentSchema = z.object({
   id: z.string().uuid().optional(),
+  title: z.string(),
   incident_date: z.string(),
-  person_involved_name: z.string(),
-  person_type: z.string(),
+  incident_type: z.string(),
+  severity: z.string(),
   location: z.string(),
-  incident_description: z.string().nullable().optional(),
-  injury_details: z.string().nullable().optional(),
-  treatment_provided: z.string().nullable().optional(),
-  outcome: z.string(),
-  is_riddor_reportable: z.boolean(),
-  witness_details: z.string().nullable().optional(),
-  animal_involved: z.boolean(),
-  linked_animal_id: z.string().uuid().nullable().optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
-  reported_by: z.string().uuid().nullable().optional(),
-  is_deleted: z.boolean().optional(),
-  created_by: z.string().uuid().optional(),
-  modified_by: z.string().uuid().optional(),
+  description: z.string(),
+  immediate_action_taken: z.string().nullable().optional(),
+  animal_involved: z.boolean().optional(),
+  first_aid_required: z.boolean().optional(),
+  root_cause_analysis: z.string().nullable().optional(),
+  prevention_action: z.string().nullable().optional(),
+  investigation_status: z.string().optional(),
+  investigation_officer_id: z.string().uuid().nullable().optional(),
   created_at: z.string().optional(),
-  updated_at: z.string().optional(),
+  modified_at: z.string().optional(),
+  is_deleted: z.boolean().optional(),
 });
 
-export const SafetyIncidentSchema = z.object({
+export const FirstAidLogSchema = z.object({
   id: z.string().uuid().optional(),
+  incident_id: z.string().uuid().nullable().optional(),
+  person_involved_name: z.string(),
   incident_date: z.string(),
-  title: z.string(),
-  incident_type: z.string(),
-  severity_level: z.string(),
+  person_type: z.string(),
   location: z.string(),
-  description: z.string().nullable().optional(),
-  immediate_action_taken: z.string().nullable().optional(),
-  animal_involved: z.boolean(),
-  linked_animal_id: z.string().uuid().nullable().optional(),
-  first_aid_required: z.boolean(),
-  root_cause: z.string().nullable().optional(),
-  preventative_action: z.string().nullable().optional(),
-  status: z.string(),
-  reported_by: z.string().uuid().nullable().optional(),
-  assigned_to: z.string().uuid().nullable().optional(),
-  is_deleted: z.boolean().optional(),
-  created_by: z.string().uuid().optional(),
-  modified_by: z.string().uuid().optional(),
+  what_happened: z.string(),
+  injury_details: z.string(),
+  provided_aid: z.string(),
+  witnesses: z.string().nullable().optional(),
+  animal_involved: z.boolean().optional(),
+  is_riddor_reportable: z.boolean().optional(),
+  outcome: z.string().nullable().optional(),
+  first_aider_id: z.string().uuid().nullable().optional(),
   created_at: z.string().optional(),
-  updated_at: z.string().optional(),
+  modified_at: z.string().optional(),
+  is_deleted: z.boolean().optional(),
 });
 
 export const FireDrillLogSchema = z.object({
@@ -372,7 +365,7 @@ export type ClinicalSchedule = z.infer<typeof ClinicalScheduleSchema>;
 export type MedicationLog = z.infer<typeof MedicationLogSchema>;
 export type IsolationLog = z.infer<typeof IsolationLogSchema>;
 export type Incident = z.infer<typeof IncidentSchema>;
-export type SafetyIncident = z.infer<typeof SafetyIncidentSchema>;
+export type FirstAidLog = z.infer<typeof FirstAidLogSchema>;
 export type FireDrillLog = z.infer<typeof FireDrillLogSchema>;
 export type MaintenanceTicket = z.infer<typeof MaintenanceTicketSchema>;
 export type Task = z.infer<typeof TaskSchema>;

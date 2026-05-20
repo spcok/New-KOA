@@ -7,7 +7,6 @@ const generateUUID = () => crypto.randomUUID();
 
 export const dailyLogService = {
   getLogsByDate: async (dateStr: string): Promise<DailyLog[]> => {
-    // Convert the YYYY-MM-DD string into strict Postgres timestamp ranges
     const startOfDay = `${dateStr}T00:00:00.000Z`;
     const endOfDay = `${dateStr}T23:59:59.999Z`;
 
@@ -26,45 +25,22 @@ export const dailyLogService = {
     return data as DailyLog[];
   },
 
-  getDashboardLogs: async (dateStr: string): Promise<{ todaysLogs: DailyLog[], lastFeeds: DailyLog[] }> => {
-    const startOfDay = `${dateStr}T00:00:00.000Z`;
-    const endOfDay = `${dateStr}T23:59:59.999Z`;
-
-    // Calculate date 30 days ago to prune history and protect performance
-    const dateObj = new Date(dateStr);
-    dateObj.setDate(dateObj.getDate() - 30);
-    const thirtyDaysAgo = dateObj.toISOString().split('T')[0] + 'T00:00:00.000Z';
-
-    const { data: todaysLogs, error: errorLogs } = await supabase
+  // NEW: Added boundary for Animal Profile queries
+  getLogsByAnimal: async (animalId: string): Promise<DailyLog[]> => {
+    const { data, error } = await supabase
       .from('daily_logs')
       .select('*')
-      .gte('log_date', startOfDay)
-      .lte('log_date', endOfDay)
-      .eq('is_deleted', false);
-
-    if (errorLogs) {
-      console.error("Error fetching today's logs for dashboard:", errorLogs);
-      throw errorLogs;
-    }
-
-    const { data: lastFeeds, error: errorFeeds } = await supabase
-      .from('daily_logs')
-      .select('*')
-      .eq('log_type', 'FEED')
-      .gte('log_date', thirtyDaysAgo)
-      .lte('log_date', endOfDay)
+      .eq('animal_id', animalId)
       .eq('is_deleted', false)
-      .order('log_date', { ascending: false });
+      .order('log_date', { ascending: false })
+      .limit(50); // Cap history to prevent memory bloat
 
-    if (errorFeeds) {
-      console.error("Error fetching recent feed logs for dashboard:", errorFeeds);
-      throw errorFeeds;
+    if (error) {
+      console.error("Error fetching logs by animal:", error);
+      throw error;
     }
-
-    return {
-      todaysLogs: todaysLogs as DailyLog[],
-      lastFeeds: lastFeeds as DailyLog[]
-    };
+    
+    return data as DailyLog[];
   },
 
   saveLog: async (data: Partial<DailyLog>, userId: string): Promise<void> => {
@@ -90,10 +66,12 @@ export const dailyLogService = {
       });
     }
     
-    // Invalidate the specific date cache to trigger a UI refresh
     if (payload.log_date) {
       const logDateOnly = payload.log_date.split('T')[0];
       queryClient.invalidateQueries({ queryKey: ['daily_logs', logDateOnly] });
+    }
+    if (payload.animal_id) {
+      queryClient.invalidateQueries({ queryKey: ['animal_logs', payload.animal_id] });
     }
   }
 };

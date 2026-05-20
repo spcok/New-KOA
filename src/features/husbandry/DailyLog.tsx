@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Users, Calendar, ChevronLeft, ChevronRight, Plus, Check } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getDynamicImageUrl } from '../../lib/supabase';
 import { dailyLogService } from '../../services/dailyLogService';
 import { Animal, DailyLog as DailyLogType } from '../../types/schema';
 import AddEntryModal from './AddEntryModal';
 
-// Dedicated Avatar Component to handle graceful offline/timeout fallbacks natively in React
 const AnimalAvatar = ({ animal }: { animal: Animal }) => {
   const [imgError, setImgError] = useState(false);
+  const imageUrl = getDynamicImageUrl(animal.image_url);
 
-  if (!animal.image_url || imgError) {
+  if (!imageUrl || imgError) {
     return <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>;
   }
 
   return (
     <img 
-      src={animal.image_url} 
+      src={imageUrl} 
       alt={animal.name || 'Animal'} 
       className="w-full h-full object-cover transition-opacity duration-300"
       onError={() => setImgError(true)}
@@ -32,7 +32,6 @@ export default function DailyLog() {
   
   const [modalState, setModalState] = useState<{isOpen: boolean, animal: Animal | null, type: string}>({ isOpen: false, animal: null, type: 'GENERAL' });
 
-  // 1. Live Server-First Queries routed through proper boundaries
   const { data: animals = [], isLoading: loadingAnimals } = useQuery<Animal[]>({ 
     queryKey: ['animals'], 
     queryFn: async () => {
@@ -41,7 +40,6 @@ export default function DailyLog() {
     }
   });
   
-  // Parameterized query using the strict service layer
   const { data: todaysLogs = [], isLoading: loadingLogs } = useQuery<DailyLogType[]>({ 
     queryKey: ['daily_logs', viewDate], 
     queryFn: () => dailyLogService.getLogsByDate(viewDate)
@@ -52,7 +50,6 @@ export default function DailyLog() {
     setViewDate(d.toISOString().split('T')[0]);
   };
 
-  // 2. Strict Typed Filters
   const activeAnimals = animals
     .filter((a) => !a.is_deleted && (a.category || '').toUpperCase() === activeCategory)
     .filter((a) => hideSubAccounts ? !(a.entity_type === 'individual' && a.parent_mob_id) : true)
@@ -60,7 +57,6 @@ export default function DailyLog() {
 
   const getLog = (animalId: string, type: string) => todaysLogs.find((l) => l.animal_id === animalId && l.log_type === type);
 
-  // 3. Dynamic Rendering Logic
   const renderHeaders = () => {
     const isExotic = activeCategory === 'EXOTICS';
     return (

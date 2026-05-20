@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { UploadCloud, Image as ImageIcon, Map, X } from 'lucide-react';
 import { animalService } from '../../services/animalService';
 import { Animal } from '../../types/schema';
+import { useAuthStore } from '../../store/authStore';
+import { getDynamicImageUrl } from '../../lib/supabase';
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <div className="bg-[#0A0B0E] border border-slate-800/80 rounded-2xl p-5 shadow-inner space-y-4">
@@ -46,6 +48,8 @@ interface AnimalFormModalProps {
 }
 
 export function AnimalFormModal({ initialData, onClose }: AnimalFormModalProps) {
+  const user = useAuthStore(s => s.user);
+
   const [formData, setFormData] = useState<Partial<Animal>>(() => initialData || { 
     weight_unit: 'g', 
     entity_type: 'individual',
@@ -68,17 +72,19 @@ export function AnimalFormModal({ initialData, onClose }: AnimalFormModalProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.id) return;
+    
     setIsUploading(true);
     try {
-      await animalService.saveAnimal(formData, imageFile || undefined, mapFile || undefined);
+      await animalService.saveAnimal(formData, user.id, imageFile || undefined, mapFile || undefined);
       onClose();
     } finally {
       setIsUploading(false);
     }
   };
 
-  const imagePreview = imageFile ? URL.createObjectURL(imageFile) : formData.image_url;
-  const mapPreview = mapFile ? URL.createObjectURL(mapFile) : formData.distribution_map_url;
+  const imagePreview = imageFile ? URL.createObjectURL(imageFile) : getDynamicImageUrl(formData.image_url);
+  const mapPreview = mapFile ? URL.createObjectURL(mapFile) : getDynamicImageUrl(formData.distribution_map_url);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">

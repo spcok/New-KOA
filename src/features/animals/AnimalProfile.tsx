@@ -3,6 +3,8 @@ import { useParams, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Stethoscope, ClipboardList, AlertTriangle, ShieldAlert, Scale, Thermometer, GitMerge, Edit } from 'lucide-react';
 import { AnimalFormModal } from './AnimalFormModal';
+import { getDynamicImageUrl } from '../../lib/supabase';
+import { dailyLogService } from '../../services/dailyLogService';
 
 export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?: () => void }) {
   const { id } = useParams({ strict: false });
@@ -20,6 +22,13 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
   const [activeTab, setActiveTab] = useState<'profile' | 'medical' | 'husbandry'>('profile');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  // NEW: Securely fetch historical logs when the husbandry tab is needed
+  const { data: husbandryLogs = [], isLoading: loadingLogs } = useQuery({
+    queryKey: ['animal_logs', effectiveId],
+    queryFn: () => dailyLogService.getLogsByAnimal(effectiveId as string),
+    enabled: !!effectiveId && activeTab === 'husbandry'
+  });
+
   if (!animal) {
     return <div className="p-8 text-center text-slate-500 font-black uppercase tracking-widest">Animal not found in local vault.</div>;
   }
@@ -35,22 +44,19 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
         <ArrowLeft size={16} /> Back to Vault
       </button>
 
-      {/* Main Header Card */}
       <div className="bg-[#0F1117] border border-slate-800/80 rounded-3xl shadow-2xl p-5 flex flex-col md:flex-row gap-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none" />
         
-        {/* Image Column */}
         <div className="w-full md:w-1/3 flex flex-col gap-4 relative z-10">
           <div className="relative w-full h-[300px] bg-[#0A0B0E] border border-slate-800/80 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center">
             {animal.image_url ? (
-              <img src={animal.image_url} alt={animal.name} className="w-full h-full object-cover" />
+              <img src={getDynamicImageUrl(animal.image_url)} alt={animal.name} className="w-full h-full object-cover" />
             ) : (
               <span className="text-slate-700 font-black text-xs uppercase tracking-widest">No Media</span>
             )}
           </div>
         </div>
         
-        {/* Details Column */}
         <div className="flex-1 flex flex-col justify-between relative z-10">
           <div>
             <div className="flex justify-between items-start mb-2">
@@ -104,7 +110,6 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="border-b border-slate-800/80">
         <nav className="flex gap-6 px-2">
           {[{ id: 'profile', label: 'Profile', icon: FileText }, { id: 'medical', label: 'Medical', icon: Stethoscope }, { id: 'husbandry', label: 'Husbandry', icon: ClipboardList }].map((tab) => (
@@ -124,7 +129,6 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
         </nav>
       </div>
 
-      {/* Tab Content */}
       <div className="bg-[#0F1117] border border-slate-800/80 rounded-3xl shadow-2xl p-5 min-h-[400px]">
         {activeTab === 'profile' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -191,14 +195,66 @@ export function AnimalProfile({ animalId, onBack }: { animalId?: string, onBack?
             {animal.distribution_map_url && (
               <div className="bg-[#0A0B0E] border border-slate-800/80 rounded-2xl overflow-hidden shadow-inner flex flex-col">
                 <div className="p-4 border-b border-slate-800/80"><h3 className="font-black text-white uppercase tracking-widest text-xs">Distribution</h3></div>
-                <img src={animal.distribution_map_url} alt="Distribution Map" className="w-full h-48 object-cover opacity-80" />
+                <img src={getDynamicImageUrl(animal.distribution_map_url)} alt="Distribution Map" className="w-full h-48 object-cover opacity-80" />
               </div>
             )}
           </div>
         )}
         
         {activeTab === 'medical' && <div className="flex items-center justify-center h-48 text-slate-500 font-black text-xs uppercase tracking-widest">Medical Module Pending Downlink</div>}
-        {activeTab === 'husbandry' && <div className="flex items-center justify-center h-48 text-slate-500 font-black text-xs uppercase tracking-widest">Husbandry Module Pending Downlink</div>}
+        
+        {activeTab === 'husbandry' && (
+          <div className="bg-[#0A0B0E] border border-slate-800/80 rounded-2xl overflow-hidden shadow-inner">
+            <div className="p-5 border-b border-slate-800/80 bg-[#0F1117] flex justify-between items-center">
+              <h3 className="font-black text-white uppercase tracking-widest text-xs">Husbandry & Observation History</h3>
+            </div>
+            
+            {loadingLogs ? (
+              <div className="flex items-center justify-center h-48 text-slate-500 font-black text-xs uppercase tracking-widest animate-pulse">Retrieving Logs...</div>
+            ) : husbandryLogs.length === 0 ? (
+              <div className="flex items-center justify-center h-48 text-slate-500 font-black text-xs uppercase tracking-widest">No historical logs found for this animal.</div>
+            ) : (
+              <div className="divide-y divide-slate-800/80 max-h-[600px] overflow-y-auto custom-scrollbar">
+                {husbandryLogs.map((log) => (
+                  <div key={log.id} className="p-5 hover:bg-slate-800/20 transition-colors">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg uppercase tracking-widest">
+                        {log.log_type}
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        {new Date(log.log_date).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </span>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-4 mb-2">
+                      {log.weight_grams && (
+                        <div className="text-xs font-bold text-slate-300 bg-[#0F1117] px-3 py-1.5 rounded-lg border border-slate-800/80 shadow-inner">
+                          <span className="text-slate-500 mr-2">WT:</span>{log.weight_grams}{log.weight_unit || 'g'}
+                        </div>
+                      )}
+                      {log.temperature_c && (
+                        <div className="text-xs font-bold text-slate-300 bg-[#0F1117] px-3 py-1.5 rounded-lg border border-slate-800/80 shadow-inner">
+                          <span className="text-slate-500 mr-2">TEMP:</span>{log.temperature_c}°C
+                        </div>
+                      )}
+                      {(log.basking_temp_c || log.cool_temp_c) && (
+                        <div className="text-xs font-bold text-slate-300 bg-[#0F1117] px-3 py-1.5 rounded-lg border border-slate-800/80 shadow-inner">
+                          <span className="text-slate-500 mr-2">GRADIENT:</span>{log.basking_temp_c || '--'}°C / {log.cool_temp_c || '--'}°C
+                        </div>
+                      )}
+                    </div>
+                    
+                    {log.notes && (
+                      <div className="mt-3 text-sm font-bold text-slate-400 bg-[#0F1117]/50 p-4 rounded-xl border border-slate-800/50 leading-relaxed whitespace-pre-wrap">
+                        {log.notes}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {isEditModalOpen && <AnimalFormModal initialData={animal} onClose={() => setIsEditModalOpen(false)} />}
