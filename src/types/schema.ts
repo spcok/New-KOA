@@ -323,6 +323,36 @@ export const TimesheetSchema = z.object({
   updated_at: z.string().optional(),
 });
 
+export const RotaSchema = z.object({
+  id: z.string().uuid().optional(),
+  user_id: z.string().uuid().nullable().optional(),
+  shift_date: z.string(),
+  shift_name: z.string(),
+  start_time: z.string().nullable().optional(),
+  end_time: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  is_deleted: z.boolean().optional(),
+  created_by: z.string().uuid().optional(),
+  modified_by: z.string().uuid().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
+
+export const HolidayRequestSchema = z.object({
+  id: z.string().uuid().optional(),
+  user_id: z.string().uuid().nullable().optional(),
+  start_date: z.string(),
+  end_date: z.string(),
+  status: z.string().optional(),
+  reason: z.string().nullable().optional(),
+  approved_by: z.string().uuid().nullable().optional(),
+  is_deleted: z.boolean().optional(),
+  created_by: z.string().uuid().optional(),
+  modified_by: z.string().uuid().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+});
+
 export const UserSchema = z.object({
   id: z.string().uuid(),
   email: z.string().nullable().optional(),
@@ -370,6 +400,8 @@ export type FireDrillLog = z.infer<typeof FireDrillLogSchema>;
 export type MaintenanceTicket = z.infer<typeof MaintenanceTicketSchema>;
 export type Task = z.infer<typeof TaskSchema>;
 export type Timesheet = z.infer<typeof TimesheetSchema>;
+export type Rota = z.infer<typeof RotaSchema>;
+export type HolidayRequest = z.infer<typeof HolidayRequestSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type RolePermission = z.infer<typeof RolePermissionSchema>;
 export type OperationalList = z.infer<typeof OperationalListSchema>;
