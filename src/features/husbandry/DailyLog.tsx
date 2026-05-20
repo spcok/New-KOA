@@ -6,6 +6,25 @@ import { dailyLogService } from '../../services/dailyLogService';
 import { Animal, DailyLog as DailyLogType } from '../../types/schema';
 import AddEntryModal from './AddEntryModal';
 
+// Dedicated Avatar Component to handle graceful offline/timeout fallbacks natively in React
+const AnimalAvatar = ({ animal }: { animal: Animal }) => {
+  const [imgError, setImgError] = useState(false);
+
+  if (!animal.image_url || imgError) {
+    return <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>;
+  }
+
+  return (
+    <img 
+      src={animal.image_url} 
+      alt={animal.name || 'Animal'} 
+      className="w-full h-full object-cover transition-opacity duration-300"
+      onError={() => setImgError(true)}
+      loading="lazy"
+    />
+  );
+};
+
 export default function DailyLog() {
   const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
   const [activeCategory, setActiveCategory] = useState('OWLS');
@@ -167,7 +186,7 @@ export default function DailyLog() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-xl bg-[#0F1117] border border-slate-800/80 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
-                          {animal.image_url ? <img src={animal.image_url} className="w-full h-full object-cover" /> : <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>}
+                          <AnimalAvatar animal={animal} />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-white">{animal.name || 'Unnamed'}</p>

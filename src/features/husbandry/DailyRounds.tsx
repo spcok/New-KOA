@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
-    Check, X, Droplets, Lock, Heart, AlertTriangle, Loader2, ClipboardCheck, Calendar, ChevronLeft, ChevronRight
+    Check, X, Droplets, Lock, Heart, AlertTriangle, ClipboardCheck, Calendar, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { dailyRoundService } from '../../services/dailyRoundService';
 import { Animal, DailyRound } from '../../types/schema';
@@ -10,11 +10,29 @@ import { supabase } from '../../lib/supabase';
 
 type ReportType = 'HEALTH' | 'WATER' | 'SECURE';
 
+// Dedicated Avatar Component to handle graceful offline/timeout fallbacks natively in React
+const AnimalAvatar = ({ animal }: { animal: Animal }) => {
+  const [imgError, setImgError] = useState(false);
+
+  if (!animal.image_url || imgError) {
+    return <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>;
+  }
+
+  return (
+    <img 
+      src={animal.image_url} 
+      alt={animal.name || 'Animal'} 
+      className="w-full h-full object-cover transition-opacity duration-300"
+      onError={() => setImgError(true)}
+      loading="lazy"
+    />
+  );
+};
+
 export default function DailyRounds() {
   const queryClient = useQueryClient();
   const session = useAuthStore(s => s.session);
   
-  // Date & Shift State for Full Record Look-back
   const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
   const [roundType, setRoundType] = useState<'Morning' | 'Evening'>('Morning');
   
@@ -63,7 +81,6 @@ export default function DailyRounds() {
     }
   }, [roundsData, viewDate, roundType]);
 
-  // Filter animals by active tab category
   const activeAnimals = animals
     .filter(a => (a.category || '').toUpperCase() === activeCategory)
     .sort((a, b) => (a.display_order ?? 999) - (b.display_order ?? 999));
@@ -74,7 +91,6 @@ export default function DailyRounds() {
     setViewDate(d.toISOString().split('T')[0]);
   };
 
-  // Tri-State Interaction Handler
   const toggleSpecific = (animal: Animal, type: ReportType) => {
     const current = pendingChecks[animal.id!] || {};
     
@@ -131,21 +147,16 @@ export default function DailyRounds() {
   const handleSignOff = async () => {
     if (!session?.user?.id) return;
     
-    const roundsToSave = Object.keys(pendingChecks).map(id => {
-        const data = pendingChecks[id] || {};
-        return {
-            ...data,
-            animal_id: id,
-            date: viewDate,
-            shift: roundType,
-            completed_at: new Date().toISOString(),
-            completed_by: session.user.id
-        };
-    });
+    const roundsToSave = Object.entries(pendingChecks).map(([id, data]) => ({
+        ...data,
+        animal_id: id,
+        date: viewDate,
+        shift: roundType,
+        completed_at: new Date().toISOString(),
+        completed_by: session.user.id
+    }));
 
     await dailyRoundService.bulkSaveRound(roundsToSave as DailyRound[], session.user.id);
-    
-    // Refresh targeted cache parameters immediately to lock down the layout view
     queryClient.invalidateQueries({ queryKey: ['daily_rounds', viewDate, roundType] });
   };
 
@@ -187,8 +198,6 @@ export default function DailyRounds() {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto font-sans pb-12">
-      
-      {/* Header Summary Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-white tracking-tight uppercase">Daily Rounds</h1>
@@ -196,10 +205,7 @@ export default function DailyRounds() {
         </div>
       </div>
 
-      {/* Unified Context Control Bar */}
       <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-[#0F1117] border border-slate-800/80 p-3 rounded-2xl shadow-inner">
-        
-        {/* Date Time Configuration Matrix */}
         <div className="flex items-center gap-1.5 w-full lg:w-auto">
           <button onClick={() => adjustDate(-1)} className="p-2 bg-[#0A0B0E] border border-slate-800/80 rounded-xl text-slate-500 hover:text-emerald-400 hover:border-emerald-500/50 transition-colors shadow-inner">
             <ChevronLeft size={16} />
@@ -221,7 +227,6 @@ export default function DailyRounds() {
           </button>
         </div>
 
-        {/* Operational Shift Switches */}
         <div className="flex items-center gap-2 w-full lg:w-auto bg-[#0A0B0E] p-1.5 rounded-xl border border-slate-800/80 shadow-inner">
             <button 
                 onClick={() => setRoundType('Morning')}
@@ -237,7 +242,6 @@ export default function DailyRounds() {
             </button>
         </div>
         
-        {/* Verification Commit CTA */}
         <button 
             onClick={handleSignOff} 
             disabled={Object.keys(pendingChecks).length === 0}
@@ -247,7 +251,6 @@ export default function DailyRounds() {
         </button>
       </div>
 
-      {/* Category Section Filtering Layout */}
       <div className="flex overflow-x-auto scrollbar-hide bg-[#0F1117] border border-slate-800/80 p-1.5 rounded-2xl gap-1 shadow-inner">
         {categories.map(cat => (
           <button 
@@ -260,7 +263,6 @@ export default function DailyRounds() {
         ))}
       </div>
 
-      {/* Interactive Verification Data Table Layout Grid */}
       <div className="bg-[#0F1117] rounded-3xl border border-slate-800/80 shadow-2xl overflow-hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full text-left text-sm min-w-[700px]">
@@ -283,7 +285,7 @@ export default function DailyRounds() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-xl bg-[#0F1117] border border-slate-800/80 shadow-inner flex items-center justify-center overflow-hidden shrink-0">
-                          {animal.image_url ? <img src={animal.image_url} className="w-full h-full object-cover" /> : <span className="text-xs font-black text-slate-600">{animal.name?.charAt(0) || '?'}</span>}
+                          <AnimalAvatar animal={animal} />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-white">{animal.name || 'Unnamed Record'}</p>
@@ -302,7 +304,6 @@ export default function DailyRounds() {
         </div>
       </div>
 
-      {/* Exception Logging Modal Overlay */}
       {reportModal.open && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[#0F1117] border border-slate-800/80 p-6 rounded-2xl w-full max-w-md shadow-2xl">
